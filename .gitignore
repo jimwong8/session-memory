@@ -10,8 +10,8 @@ dist/
 .env
 .env.local
 .env.production
-*.bak
-*.bak-*
+*.bak*
+*.bak*-*
 
 # Logs & Data
 logs/
