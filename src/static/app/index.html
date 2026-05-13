@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Center App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen font-sans">
+  <div class="max-w-7xl mx-auto p-6 space-y-6" data-app-shell="high-fusion">
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div>
+        <div class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-3 py-1">/app 高融合入口</div>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Session Center App</h1>
+        <p class="text-sm text-gray-500 mt-2">面向 central-session-server 能力映射的前端工作台第一版，先提供 Overview / Search / Resume / Sessions / Self-Check 骨架。</p>
+      </div>
+      <div class="flex flex-wrap gap-3">
+        <a href="/" class="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-50">返回 Dashboard</a>
+        <button id="refresh-self-check" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700">刷新自检</button>
+      </div>
+    </header>
+
+    <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4"><div class="text-xs uppercase tracking-wide text-gray-400">Overview</div><div class="text-sm font-semibold text-gray-800 mt-2">系统总览与事件流</div></div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4"><div class="text-xs uppercase tracking-wide text-gray-400">Search</div><div class="text-sm font-semibold text-gray-800 mt-2">全文检索工作台</div></div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4"><div class="text-xs uppercase tracking-wide text-gray-400">Resume</div><div class="text-sm font-semibold text-gray-800 mt-2">恢复包与上下文恢复</div></div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4"><div class="text-xs uppercase tracking-wide text-gray-400">Sessions</div><div class="text-sm font-semibold text-gray-800 mt-2">会话列表与详情</div></div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4"><div class="text-xs uppercase tracking-wide text-gray-400">Self-Check</div><div class="text-sm font-semibold text-gray-800 mt-2">接口契约与封板状态自检</div></div>
+    </section>
+
+    <div class="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-6">
+      <aside class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
+        <div class="text-xs uppercase tracking-wide text-gray-400">Navigation</div>
+        <nav class="grid gap-2 text-sm">
+          <a class="rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-700 px-3 py-2 font-medium" href="#overview">Overview</a>
+          <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#search">Search</a>
+          <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#resume">Resume</a>
+          <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#sessions">Sessions</a>
+          <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#self-check">Self-Check</a>
+        </nav>
+      </aside>
+
+      <main class="space-y-6">
+        <section id="overview" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div class="flex items-center justify-between gap-3 mb-4">
+            <h2 class="text-xl font-semibold text-gray-900">Overview</h2>
+            <span id="overview-status" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">loading</span>
+          </div>
+          <div id="overview-content" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+        </section>
+
+        <section id="search" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-xl font-semibold text-gray-900">Search</h2>
+              <div class="text-sm text-gray-500 mt-1">在当前选中会话中执行最小消息语义搜索，基于 <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded">POST /api/v1/sessions/{session_id}/search</code>。</div>
+            </div>
+            <span id="search-status" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">idle</span>
+          </div>
+          <div id="search-context" class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">当前检索上下文尚未准备完成。</div>
+          <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-700">Query</label>
+              <input id="search-query" type="text" placeholder="输入搜索词，例如最近的会话中心变更" class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300" />
+              <div class="flex flex-wrap gap-3">
+                <button id="search-submit" type="button" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700">执行搜索</button>
+                <button id="search-clear" type="button" class="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">清空结果</button>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Session</label>
+                <select id="search-session" class="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"></select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Top K</label>
+                <select id="search-topk" class="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300">
+                  <option value="3">3</option>
+                  <option value="5">5</option>
+                  <option value="10">10</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div id="search-meta" class="text-xs text-gray-500"></div>
+          <div id="search-results-summary" class="text-sm text-gray-600"></div>
+          <div id="search-results" class="space-y-3"></div>
+        </section>
+
+        <section id="resume" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-gray-900">Resume</h2>
+            <span id="resume-status" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">loading</span>
+          </div>
+          <div class="text-sm text-gray-500">基于最近会话与摘要状态做只读恢复面板，仅展示最近恢复对象，不执行恢复写操作。</div>
+          <div id="resume-summary" class="grid grid-cols-1 md:grid-cols-4 gap-4"></div>
+          <div id="resume-card"></div>
+        </section>
+
+        <section id="session-detail" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-gray-900">Session Detail</h2>
+            <span id="session-detail-status" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">loading</span>
+          </div>
+          <div class="text-sm text-gray-500">围绕当前选中会话展示详情、摘要计数与最近消息，只读不修改。</div>
+          <div id="session-detail-summary" class="grid grid-cols-1 md:grid-cols-4 gap-4"></div>
+          <div id="session-detail-card"></div>
+          <div id="session-detail-messages" class="space-y-3"></div>
+        </section>
+
+        <section id="sessions" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-gray-900">Sessions</h2>
+            <span id="sessions-status" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">loading</span>
+          </div>
+          <div class="text-sm text-gray-500">基于 <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded">/api/v1/sessions/recent</code> 展示最近会话，只读不修改。</div>
+          <div id="sessions-summary" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+          <div id="sessions-list" class="space-y-3"></div>
+        </section>
+
+        <section id="self-check" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-gray-900">Self-Check</h2>
+            <span id="self-check-badge" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">loading</span>
+          </div>
+          <div id="self-check-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">边界提示：这里会明确展示 closeout 真实边界。当前静态基线仍为 P0-2 blocked、P1-2 caveated，不会被前端伪装成 passed。</div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const api = {
+      deepHealth: '/health?deep=true',
+      overview: '/api/v1/admin/dashboard',
+      modelConfig: '/api/v1/admin/config/model',
+      sessionsRecent: '/api/v1/sessions/recent?limit=10',
+      resumeRecent: '/api/v1/sessions/recent?limit=1',
+      searchSession: function(sessionId) { return '/api/v1/sessions/' + sessionId + '/search'; },
+      sessionDetail: function(sessionId) { return '/api/v1/sessions/' + sessionId; }
+    };
+
+    const appState = {
+      selectedSessionId: null,
+      selectedSessionRecord: null,
+      recentSessions: [],
+      resumeRequestSeq: 0,
+      detailRequestSeq: 0,
+      userPinnedSessionId: null,
+      workspaceStateKey: 'session-center-workbench-v1'
+    };
+
+    async function safeJson(url, options) {
+      const opts = options || {};
+      const retries = Number(opts.retries || 0);
+      const retryDelayMs = Number(opts.retryDelayMs || 0);
+      let lastError = null;
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) {
+            throw new Error(url + ' -> ' + resp.status);
+          }
+          return await resp.json();
+        } catch (error) {
+          lastError = error;
+          if (attempt >= retries) {
+            throw lastError;
+          }
+          if (retryDelayMs > 0) {
+            await new Promise(function(resolve) { setTimeout(resolve, retryDelayMs); });
+          }
+        }
+      }
+      throw lastError || new Error('unknown fetch failure');
+    }
+
+    async function postJson(url, payload) {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        throw new Error(url + ' -> ' + resp.status);
+      }
+      return await resp.json();
+    }
+
+    function formatDate(value) {
+      if (!value) {
+        return 'unknown';
+      }
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) {
+        return value;
+      }
+      return d.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function formatNumber(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        return '-';
+      }
+      return num.toLocaleString('en-US');
+    }
+
+    function ratioPercent(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        return '-';
+      }
+      return (num * 100).toFixed(1) + '%';
+    }
+
+    function formatNullable(value) {
+      if (value === null || value === undefined || value === '') {
+        return '-';
+      }
+      return String(value);
+    }
+
+    function readWorkspaceState() {
+      try {
+        const raw = localStorage.getItem(appState.workspaceStateKey);
+        if (!raw) {
+          return {};
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function writeWorkspaceState(patch) {
+      try {
+        const current = readWorkspaceState();
+        const next = Object.assign({}, current, patch || {});
+        localStorage.setItem(appState.workspaceStateKey, JSON.stringify(next));
+      } catch (error) {
+        // ignore storage failures
+      }
+    }
+
+    function restoreWorkspaceState() {
+      const state = readWorkspaceState();
+      if (state.selectedSessionId) {
+        appState.userPinnedSessionId = state.selectedSessionId;
+        appState.selectedSessionId = state.selectedSessionId;
+      }
+      const queryEl = document.getElementById('search-query');
+      if (queryEl && state.searchQuery) {
+        queryEl.value = state.searchQuery;
+      }
+      const topkEl = document.getElementById('search-topk');
+      if (topkEl && state.searchTopK) {
+        topkEl.value = String(state.searchTopK);
+      }
+    }
+
+    function persistSelectedSessionId(sessionId) {
+      if (!sessionId) {
+        appState.userPinnedSessionId = null;
+        writeWorkspaceState({ selectedSessionId: null });
+        return;
+      }
+      appState.userPinnedSessionId = sessionId;
+      appState.selectedSessionId = sessionId;
+      writeWorkspaceState({ selectedSessionId: sessionId });
+    }
+
+    function setSelectedSession(session, options) {
+      if (!session || !session.id) {
+        return;
+      }
+      const opts = options || {};
+      appState.selectedSessionId = session.id;
+      appState.selectedSessionRecord = session;
+      if (opts.pinned) {
+        persistSelectedSessionId(session.id);
+      }
+      const searchSelect = document.getElementById('search-session');
+      if (searchSelect) {
+        searchSelect.value = session.id;
+      }
+    }
+
+    function getEffectiveSelectedSessionId(options) {
+      const opts = options || {};
+      const searchSelect = document.getElementById('search-session');
+      if (opts.preferControl && searchSelect && searchSelect.value) {
+        return searchSelect.value;
+      }
+      if (appState.userPinnedSessionId) {
+        return appState.userPinnedSessionId;
+      }
+      if (searchSelect && searchSelect.value) {
+        return searchSelect.value;
+      }
+      return appState.selectedSessionId;
+    }
+
+    function syncSelectedSessionFromCurrentControls(options) {
+      const effectiveId = getEffectiveSelectedSessionId(options);
+      if (!effectiveId) {
+        return null;
+      }
+      const matched = appState.recentSessions.find(function(item) { return item.id === effectiveId; }) || null;
+      if (matched) {
+        appState.selectedSessionId = matched.id;
+        appState.selectedSessionRecord = matched;
+      }
+      return matched;
+    }
+
+    function getPinnedSessionFallback() {
+      if (!appState.selectedSessionId && !appState.userPinnedSessionId) {
+        return null;
+      }
+      return {
+        id: appState.userPinnedSessionId || appState.selectedSessionId,
+        title: appState.selectedSessionRecord?.title || appState.userPinnedSessionId || appState.selectedSessionId,
+        metadata_json: appState.selectedSessionRecord?.metadata_json || { opencode_session_id: appState.userPinnedSessionId || appState.selectedSessionId },
+        updated_at: appState.selectedSessionRecord?.updated_at || null,
+        created_at: appState.selectedSessionRecord?.created_at || null,
+        total_tokens: appState.selectedSessionRecord?.total_tokens || 0,
+        message_count: appState.selectedSessionRecord?.message_count || 0,
+        visibility: appState.selectedSessionRecord?.visibility || 'unknown',
+        user_id: appState.selectedSessionRecord?.user_id || '-'
+      };
+    }
+
+    function sessionRow(session) {
+      const metadata = session && session.metadata_json ? session.metadata_json : {};
+      const archived = session && session.archived ? 'archived' : 'active';
+      const archivedTone = session && session.archived
+        ? 'text-xs px-2 py-1 rounded-full border border-amber-200 text-amber-700 bg-amber-50'
+        : 'text-xs px-2 py-1 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50';
+      const selected = appState.selectedSessionId && session && session.id === appState.selectedSessionId;
+      const selectedClass = selected
+        ? 'ring-2 ring-indigo-200 border-indigo-300 bg-indigo-50/40'
+        : 'border-gray-200 bg-gray-50 hover:border-indigo-200 hover:bg-indigo-50/20';
+      return '<button type="button" data-session-select="' + escapeHtml(session.id || '') + '" class="w-full text-left rounded-xl border ' + selectedClass + ' p-4 transition">'
+        + '<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">'
+        + '<div class="min-w-0">'
+        + '<div class="flex flex-wrap items-center gap-2">'
+        + '<div class="font-semibold text-gray-900 break-all">' + escapeHtml(session.title || session.id || 'untitled session') + '</div>'
+        + '<span class="' + archivedTone + '">' + archived + '</span>'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">' + escapeHtml(session.visibility || 'unknown') + '</span>'
+        + (selected ? '<span class="text-xs px-2 py-1 rounded-full border border-indigo-200 text-indigo-700 bg-indigo-50">selected</span>' : '')
+        + '</div>'
+        + '<div class="text-xs text-gray-500 mt-2 break-all">id=' + escapeHtml(session.id || '-') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1">updated=' + escapeHtml(formatDate(session.updated_at)) + ' · created=' + escapeHtml(formatDate(session.created_at)) + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1">source=' + escapeHtml(metadata.source || '-') + ' · host=' + escapeHtml(metadata.host || '-') + '</div>'
+        + '</div>'
+        + '<div class="grid grid-cols-2 gap-3 text-right shrink-0">'
+        + '<div><div class="text-[11px] uppercase tracking-wide text-gray-400">Messages</div><div class="text-lg font-semibold text-gray-900">' + escapeHtml(formatNumber(session.message_count)) + '</div></div>'
+        + '<div><div class="text-[11px] uppercase tracking-wide text-gray-400">Tokens</div><div class="text-lg font-semibold text-gray-900">' + escapeHtml(formatNumber(session.total_tokens)) + '</div></div>'
+        + '</div>'
+        + '</div>'
+        + '</button>';
+    }
+
+    function renderSearchContext() {
+      const el = document.getElementById('search-context');
+      if (!el) {
+        return;
+      }
+      const session = syncSelectedSessionFromCurrentControls() || appState.selectedSessionRecord;
+      if (!session) {
+        el.textContent = '当前检索上下文尚未准备完成。';
+        return;
+      }
+      const metadata = session.metadata_json || {};
+      el.innerHTML = '当前会话：<span class="font-semibold text-gray-800">' + escapeHtml(session.title || session.id || '-') + '</span>'
+        + ' · session_id=' + escapeHtml(session.id || '-')
+        + ' · opencode_session_id=' + escapeHtml(metadata.opencode_session_id || '-')
+        + ' · updated=' + escapeHtml(formatDate(session.updated_at));
+    }
+
+    function detailMessageRow(message, index) {
+      const metadata = message && message.metadata_json ? message.metadata_json : {};
+      return '<div class="rounded-xl border border-gray-200 bg-gray-50 p-4">'
+        + '<div class="flex flex-wrap items-center gap-2">'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-indigo-200 text-indigo-700 bg-indigo-50">#' + escapeHtml(index + 1) + '</span>'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">' + escapeHtml(message.role || 'unknown') + '</span>'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">tokens=' + escapeHtml(formatNumber(message.tokens)) + '</span>'
+        + '</div>'
+        + '<div class="text-sm text-gray-900 mt-3 whitespace-pre-wrap break-words">' + escapeHtml(message.content || '') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-3 break-all">message_id=' + escapeHtml(message.id || '-') + ' · created=' + escapeHtml(formatDate(message.created_at)) + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1 break-all">event=' + escapeHtml((metadata && metadata.event) || '-') + ' · source=' + escapeHtml((metadata && metadata.source) || '-') + '</div>'
+        + '</div>';
+    }
+
+    function searchResultRow(item, index) {
+      const metadata = item && item.metadata_json ? item.metadata_json : {};
+      return '<div class="rounded-xl border border-gray-200 bg-gray-50 p-4">'
+        + '<div class="flex flex-wrap items-center gap-2">'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-indigo-200 text-indigo-700 bg-indigo-50">#' + escapeHtml(index + 1) + '</span>'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-indigo-200 text-indigo-700 bg-indigo-50">' + escapeHtml(item.role || 'unknown') + '</span>'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">tokens=' + escapeHtml(formatNumber(item.tokens)) + '</span>'
+        + '<span class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">session=' + escapeHtml(item.session_id || '-') + '</span>'
+        + '</div>'
+        + '<div class="text-sm text-gray-900 mt-3 whitespace-pre-wrap break-words">' + escapeHtml(item.content || '') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-3 break-all">message_id=' + escapeHtml(item.id || '-') + ' · created=' + escapeHtml(formatDate(item.created_at)) + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1 break-all">source=' + escapeHtml((metadata && metadata.source) || '-') + ' · event=' + escapeHtml((metadata && metadata.event) || '-') + ' · opencode_session_id=' + escapeHtml((metadata && metadata.opencode_session_id) || '-') + '</div>'
+        + '</div>';
+    }
+
+    function sessionDetailCard(session) {
+      const metadata = session && session.metadata_json ? session.metadata_json : {};
+      return '<div class="rounded-xl border border-gray-200 bg-gray-50 p-4">'
+        + '<div class="font-semibold text-gray-900 break-all">' + escapeHtml(session.title || session.id || 'untitled session') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-2 break-all">session_id=' + escapeHtml(session.id || '-') + ' · user=' + escapeHtml(session.user_id || '-') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1 break-all">opencode_session_id=' + escapeHtml(metadata.opencode_session_id || '-') + ' · source=' + escapeHtml(metadata.source || '-') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1">updated=' + escapeHtml(formatDate(session.updated_at)) + ' · created=' + escapeHtml(formatDate(session.created_at)) + '</div>'
+        + '</div>';
+    }
+
+    function resumeCard(session, summaryStatus, contextStats) {
+      const metadata = session && session.metadata_json ? session.metadata_json : {};
+      const summaryReady = summaryStatus && summaryStatus.latest_summary_exists;
+      const summaryTone = summaryReady
+        ? 'text-xs px-2 py-1 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50'
+        : 'text-xs px-2 py-1 rounded-full border border-amber-200 text-amber-700 bg-amber-50';
+      return '<div class="rounded-xl border border-gray-200 bg-gray-50 p-4">'
+        + '<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">'
+        + '<div class="min-w-0">'
+        + '<div class="flex flex-wrap items-center gap-2">'
+        + '<div class="font-semibold text-gray-900 break-all">' + escapeHtml(session.title || session.id || 'untitled session') + '</div>'
+        + '<span class="' + summaryTone + '">' + (summaryReady ? 'summary-ready' : 'summary-pending') + '</span>'
+        + '</div>'
+        + '<div class="text-xs text-gray-500 mt-2 break-all">session_id=' + escapeHtml(session.id || '-') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1 break-all">opencode_session_id=' + escapeHtml(metadata.opencode_session_id || '-') + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1">updated=' + escapeHtml(formatDate(session.updated_at)) + ' · created=' + escapeHtml(formatDate(session.created_at)) + '</div>'
+        + '<div class="text-xs text-gray-500 mt-1">summary_window=' + escapeHtml(formatNullable(summaryStatus && summaryStatus.latest_summary_range_start)) + ' → ' + escapeHtml(formatNullable(summaryStatus && summaryStatus.latest_summary_range_end)) + '</div>'
+        + '</div>'
+        + '<div class="grid grid-cols-2 gap-3 shrink-0 text-right">'
+        + '<div><div class="text-[11px] uppercase tracking-wide text-gray-400">Messages</div><div class="text-lg font-semibold text-gray-900">' + escapeHtml(formatNumber(contextStats && contextStats.total_messages != null ? contextStats.total_messages : session.message_count)) + '</div></div>'
+        + '<div><div class="text-[11px] uppercase tracking-wide text-gray-400">Tokens</div><div class="text-lg font-semibold text-gray-900">' + escapeHtml(formatNumber(contextStats && contextStats.total_tokens != null ? contextStats.total_tokens : session.total_tokens)) + '</div></div>'
+        + '<div><div class="text-[11px] uppercase tracking-wide text-gray-400">Summaries</div><div class="text-lg font-semibold text-gray-900">' + escapeHtml(formatNumber(contextStats && contextStats.summaries_count != null ? contextStats.summaries_count : 0)) + '</div></div>'
+        + '<div><div class="text-[11px] uppercase tracking-wide text-gray-400">Context</div><div class="text-lg font-semibold text-gray-900">' + escapeHtml(ratioPercent(contextStats && contextStats.context_utilization)) + '</div></div>'
+        + '</div>'
+        + '</div>'
+        + '</div>';
+    }
+
+    function statCard(title, value, note) {
+      return '<div class="bg-gray-50 rounded-xl border border-gray-200 p-4">'
+        + '<div class="text-xs uppercase tracking-wide text-gray-400">' + title + '</div>'
+        + '<div class="text-2xl font-bold text-gray-900 mt-2">' + value + '</div>'
+        + '<div class="text-xs text-gray-500 mt-2">' + (note || '') + '</div>'
+        + '</div>';
+    }
+
+    function statusBadgeClass(status) {
+      if (status === 'ok' || status === 'passed') {
+        return 'text-xs px-2 py-1 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50';
+      }
+      if (status === 'warning' || status === 'degraded' || status === 'partial' || status === 'running' || status === 'transient' || status === 'recovering') {
+        return 'text-xs px-2 py-1 rounded-full border border-amber-200 text-amber-700 bg-amber-50';
+      }
+      if (status === 'error' || status === 'failed' || status === 'unavailable') {
+        return 'text-xs px-2 py-1 rounded-full border border-rose-200 text-rose-700 bg-rose-50';
+      }
+      return 'text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500 bg-white';
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function summarizeError(error) {
+      return error && error.message ? error.message : 'unknown error';
+    }
+
+    function checkCard(label, status, detail, tone) {
+      const tones = {
+        ok: 'rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800',
+        warn: 'rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800',
+        error: 'rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800',
+        neutral: 'rounded-xl border border-gray-200 bg-gray-50 p-4 text-gray-700'
+      };
+      const boxClass = tones[tone] || tones.neutral;
+      const displayStatus = status === 'transient' ? 'recovering' : status;
+      return '<div class="' + boxClass + '">'
+        + '<div class="flex items-center justify-between gap-3"><div class="font-semibold">' + escapeHtml(label) + '</div><div class="text-xs uppercase tracking-wide">' + escapeHtml(displayStatus) + '</div></div>'
+        + '<div class="text-xs mt-2 break-words">' + escapeHtml(detail) + '</div>'
+        + '</div>';
+    }
+
+    function classifyTransientError(error) {
+      const text = summarizeError(error).toLowerCase();
+      return text.includes('failed to fetch')
+        || text.includes('connection refused')
+        || text.includes('connection reset')
+        || text.includes('err_connection_refused')
+        || text.includes('err_connection_reset');
+    }
+
+    function toneFromStatus(status) {
+      if (status === 'ok' || status === 'passed') {
+        return 'ok';
+      }
+      if (status === 'warning' || status === 'degraded' || status === 'partial' || status === 'running' || status === 'transient' || status === 'recovering') {
+        return 'warn';
+      }
+      if (status === 'error' || status === 'failed' || status === 'unavailable') {
+        return 'error';
+      }
+      return 'neutral';
+    }
+
+    function renderTransientPanelState(statusEl, targetEls, label, error) {
+      const detail = '短时连接抖动，自动重试后仍未恢复：' + summarizeError(error);
+      statusEl.textContent = 'recovering';
+      statusEl.className = statusBadgeClass('transient');
+      const html = '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">' + escapeHtml(label) + ' 暂处恢复中：' + escapeHtml(detail) + '</div>';
+      targetEls.forEach(function(el) {
+        el.innerHTML = html;
+      });
+    }
+
+    async function loadOverview() {
+      const statusEl = document.getElementById('overview-status');
+      const container = document.getElementById('overview-content');
+      statusEl.textContent = 'loading';
+      statusEl.className = statusBadgeClass('running');
+      try {
+        const [dashboard, modelConfig] = await Promise.all([
+          safeJson(api.overview),
+          safeJson(api.modelConfig)
+        ]);
+        const modelValue = modelConfig && modelConfig.value ? modelConfig.value : {};
+        const routingMode = modelValue.llm_routing_mode || 'unknown';
+        const primaryModel = modelValue.openai_model || 'unknown';
+        const summaryModel = modelValue.summary_model || 'unknown';
+        const overallStatus = dashboard && dashboard.overall_status ? dashboard.overall_status : 'unknown';
+        const dbCounts = dashboard && dashboard.health && dashboard.health.db_counts ? dashboard.health.db_counts : {};
+        const kgOps = dashboard && dashboard.kg_ops ? dashboard.kg_ops : {};
+        const alerts = dashboard && dashboard.alerts ? dashboard.alerts : {};
+        const generatedAt = dashboard && dashboard.generated_at ? dashboard.generated_at : 'unknown';
+        statusEl.textContent = overallStatus;
+        statusEl.className = statusBadgeClass(overallStatus);
+        container.innerHTML = [
+          statCard('Overall', overallStatus, '来自 admin dashboard'),
+          statCard('Sessions', dbCounts.sessions != null ? dbCounts.sessions : '-', '数据库中的 session 总量'),
+          statCard('KG Queue', kgOps.queue_ready_total != null ? kgOps.queue_ready_total : '-', '知识图谱 ready 队列'),
+          statCard('Deadletters', kgOps.deadletter_total != null ? kgOps.deadletter_total : '-', '知识图谱死信总量'),
+          statCard('Routing Mode', routingMode, '当前模型路由模式'),
+          statCard('Models', primaryModel, 'summary: ' + summaryModel),
+          statCard('Alerts', alerts.status || 'unknown', 'checks=' + (alerts.checks_evaluated != null ? alerts.checks_evaluated : '-')),
+          statCard('Generated At', generatedAt, 'dashboard 生成时间')
+        ].join('');
+      } catch (error) {
+        if (classifyTransientError(error)) {
+          renderTransientPanelState(statusEl, [container], 'Overview', error);
+          return;
+        }
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+        container.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Overview 加载失败：' + escapeHtml(summarizeError(error)) + '</div>';
+      }
+    }
+
+    async function loadSearchSessions() {
+      const selectEl = document.getElementById('search-session');
+      const statusEl = document.getElementById('search-status');
+      try {
+        const sessions = await safeJson(api.sessionsRecent);
+        const rows = Array.isArray(sessions) ? sessions : [];
+        appState.recentSessions = rows;
+        const preferredId = appState.userPinnedSessionId || appState.selectedSessionId;
+        if (preferredId) {
+          const preferred = rows.find(function(item) { return item.id === preferredId; });
+          if (preferred) {
+            setSelectedSession(preferred, { pinned: Boolean(appState.userPinnedSessionId) });
+          } else if (rows.length) {
+            setSelectedSession(rows[0]);
+            appState.userPinnedSessionId = null;
+          }
+        } else if (rows.length) {
+          setSelectedSession(rows[0]);
+        }
+        selectEl.innerHTML = rows.map(function(item) {
+          const label = (item.title || item.id || 'session') + ' · ' + formatDate(item.updated_at);
+          const selected = appState.selectedSessionId === item.id ? 'selected' : '';
+          return '<option value="' + escapeHtml(item.id) + '" ' + selected + '>' + escapeHtml(label) + '</option>';
+        }).join('');
+        if (appState.selectedSessionId) {
+          selectEl.value = appState.selectedSessionId;
+        }
+        renderSearchContext();
+        loadSessionDetail(appState.selectedSessionRecord || rows[0] || null);
+        if (!rows.length) {
+          statusEl.textContent = 'empty';
+          statusEl.className = statusBadgeClass('warning');
+        }
+      } catch (error) {
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+      }
+    }
+
+    async function executeSearch() {
+      const statusEl = document.getElementById('search-status');
+      const queryEl = document.getElementById('search-query');
+      const sessionEl = document.getElementById('search-session');
+      const topkEl = document.getElementById('search-topk');
+      const metaEl = document.getElementById('search-meta');
+      const resultsEl = document.getElementById('search-results');
+      const resultsSummaryEl = document.getElementById('search-results-summary');
+      const query = queryEl.value.trim();
+      const sessionId = sessionEl.value;
+      const topK = Number(topkEl.value || 3);
+      const preserveIdle = arguments.length > 0 && arguments[0] && arguments[0].preserveIdleMessage;
+
+      writeWorkspaceState({
+        selectedSessionId: appState.userPinnedSessionId || sessionId || null,
+        searchQuery: queryEl.value,
+        searchTopK: topK
+      });
+
+      renderSearchContext();
+
+      if (!query) {
+        statusEl.textContent = 'idle';
+        statusEl.className = statusBadgeClass('warning');
+        metaEl.textContent = preserveIdle ? '' : '请输入搜索词后再执行。';
+        resultsSummaryEl.textContent = '';
+        resultsEl.innerHTML = '';
+        return;
+      }
+      if (!sessionId) {
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+        metaEl.textContent = '当前没有可用会话可供搜索。';
+        resultsEl.innerHTML = '';
+        return;
+      }
+
+      statusEl.textContent = 'running';
+      statusEl.className = statusBadgeClass('running');
+      metaEl.textContent = '正在检索中...';
+      resultsSummaryEl.textContent = '';
+      resultsEl.innerHTML = '';
+
+      try {
+        const data = await postJson(api.searchSession(sessionId), {
+          query: query,
+          top_k: topK
+        });
+        const results = data && Array.isArray(data.results) ? data.results : [];
+        statusEl.textContent = results.length > 0 ? 'ok' : 'empty';
+        statusEl.className = statusBadgeClass(results.length > 0 ? 'ok' : 'warning');
+        metaEl.textContent = 'session=' + sessionId + ' · query="' + query + '" · top_k=' + topK + ' · results=' + results.length + ' · top_k 是返回上限';
+        resultsSummaryEl.textContent = results.length > 0
+          ? '已返回前 ' + results.length + ' 条消息结果；展示的是完整消息，不是高亮片段。'
+          : '当前没有命中结果；这在语义搜索里是正常状态。';
+        if (!results.length) {
+          resultsEl.innerHTML = '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">没有命中结果，可以尝试更短的关键词、切换当前会话，或提高 Top K 观察更多结果上限。</div>';
+          return;
+        }
+        resultsEl.innerHTML = results.map(function(item, index) { return searchResultRow(item, index); }).join('');
+      } catch (error) {
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+        metaEl.textContent = '搜索失败';
+        resultsSummaryEl.textContent = '';
+        resultsEl.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Search 执行失败：' + escapeHtml(summarizeError(error)) + '</div>';
+      }
+    }
+
+    async function loadResume() {
+      const statusEl = document.getElementById('resume-status');
+      const summaryEl = document.getElementById('resume-summary');
+      const cardEl = document.getElementById('resume-card');
+      const requestSeq = ++appState.resumeRequestSeq;
+      statusEl.textContent = 'loading';
+      statusEl.className = statusBadgeClass('running');
+      try {
+        let session = syncSelectedSessionFromCurrentControls() || appState.selectedSessionRecord || getPinnedSessionFallback();
+        if (!session) {
+          const recent = await safeJson(api.resumeRecent);
+          if (requestSeq !== appState.resumeRequestSeq) {
+            return;
+          }
+          const rows = Array.isArray(recent) ? recent : [];
+          if (!rows.length) {
+            statusEl.textContent = 'empty';
+            statusEl.className = statusBadgeClass('warning');
+            summaryEl.innerHTML = '';
+            cardEl.innerHTML = '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">没有可恢复的最近会话。</div>';
+            return;
+          }
+          session = rows[0];
+          setSelectedSession(session);
+        }
+        const [summaryStatus, contextStats, detailMeta] = await Promise.all([
+          safeJson('/api/v1/sessions/' + session.id + '/summary-status'),
+          safeJson('/api/v1/sessions/' + session.id + '/context-stats'),
+          safeJson(api.sessionDetail(session.id))
+        ]);
+        if (requestSeq !== appState.resumeRequestSeq) {
+          return;
+        }
+        const effectiveSession = detailMeta && detailMeta.id ? detailMeta : session;
+        appState.selectedSessionRecord = effectiveSession;
+        const summaryReady = !!(summaryStatus && summaryStatus.latest_summary_exists);
+        const summaryEnabled = !!(summaryStatus && summaryStatus.summary_enabled);
+        statusEl.textContent = summaryReady ? 'ready' : 'pending';
+        statusEl.className = statusBadgeClass(summaryReady ? 'ok' : 'warning');
+        summaryEl.innerHTML = [
+          statCard('Recent Session', effectiveSession.title || effectiveSession.id || '-', '最近恢复对象'),
+          statCard('Summary', summaryReady ? 'ready' : 'pending', 'latest summary status'),
+          statCard('Summary Enabled', summaryEnabled ? 'yes' : 'no', '摘要功能是否开启'),
+          statCard('Context Utilization', ratioPercent(contextStats && contextStats.context_utilization), '当前上下文占用率')
+        ].join('');
+        cardEl.innerHTML = resumeCard(effectiveSession, summaryStatus || {}, contextStats || {});
+      } catch (error) {
+        if (requestSeq !== appState.resumeRequestSeq) {
+          return;
+        }
+        if (classifyTransientError(error)) {
+          summaryEl.innerHTML = '';
+          renderTransientPanelState(statusEl, [cardEl], 'Resume', error);
+          return;
+        }
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+        summaryEl.innerHTML = '';
+        cardEl.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Resume 加载失败：' + escapeHtml(summarizeError(error)) + '</div>';
+      }
+    }
+
+    async function loadSessionDetail(sessionOverride) {
+      const statusEl = document.getElementById('session-detail-status');
+      const summaryEl = document.getElementById('session-detail-summary');
+      const cardEl = document.getElementById('session-detail-card');
+      const messagesEl = document.getElementById('session-detail-messages');
+      const requestSeq = ++appState.detailRequestSeq;
+      statusEl.textContent = 'loading';
+      statusEl.className = statusBadgeClass('running');
+      try {
+        const session = sessionOverride || syncSelectedSessionFromCurrentControls() || appState.selectedSessionRecord;
+        if (!session) {
+          statusEl.textContent = 'empty';
+          statusEl.className = statusBadgeClass('warning');
+          summaryEl.innerHTML = '';
+          cardEl.innerHTML = '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">当前没有可展示的会话详情。</div>';
+          messagesEl.innerHTML = '';
+          return;
+        }
+        const detail = await safeJson(api.sessionDetail(session.id));
+        if (requestSeq !== appState.detailRequestSeq) {
+          return;
+        }
+        const messages = Array.isArray(detail.messages) ? detail.messages : [];
+        const summaries = Array.isArray(detail.summaries) ? detail.summaries : [];
+        statusEl.textContent = 'ok';
+        statusEl.className = statusBadgeClass('ok');
+        summaryEl.innerHTML = [
+          statCard('Messages', messages.length, '当前 detail 返回的消息数'),
+          statCard('Summaries', summaries.length, '当前 detail 返回的摘要数'),
+          statCard('Tokens', formatNumber(detail.total_tokens), '会话总 token'),
+          statCard('Visibility', detail.visibility || 'unknown', '当前会话可见性')
+        ].join('');
+        cardEl.innerHTML = sessionDetailCard(detail);
+        const recentMessages = messages.slice(-5).reverse();
+        messagesEl.innerHTML = recentMessages.length
+          ? recentMessages.map(function(message, index) { return detailMessageRow(message, index); }).join('')
+          : '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">当前会话没有可显示的消息明细。</div>';
+      } catch (error) {
+        if (requestSeq !== appState.detailRequestSeq) {
+          return;
+        }
+        if (classifyTransientError(error)) {
+          summaryEl.innerHTML = '';
+          renderTransientPanelState(statusEl, [cardEl, messagesEl], 'Session Detail', error);
+          return;
+        }
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+        summaryEl.innerHTML = '';
+        cardEl.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Session Detail 加载失败：' + escapeHtml(summarizeError(error)) + '</div>';
+        messagesEl.innerHTML = '';
+      }
+    }
+
+    async function loadSessions() {
+      const statusEl = document.getElementById('sessions-status');
+      const summaryEl = document.getElementById('sessions-summary');
+      const listEl = document.getElementById('sessions-list');
+      statusEl.textContent = 'loading';
+      statusEl.className = statusBadgeClass('running');
+      try {
+        const sessions = await safeJson(api.sessionsRecent);
+        const rows = Array.isArray(sessions) ? sessions : [];
+        appState.recentSessions = rows;
+        const preferredId = appState.userPinnedSessionId || appState.selectedSessionId;
+        if (preferredId) {
+          const preferred = rows.find(function(item) { return item.id === preferredId; });
+          if (preferred) {
+            appState.selectedSessionRecord = preferred;
+            appState.selectedSessionId = preferred.id;
+          } else if (rows.length) {
+            setSelectedSession(rows[0]);
+            appState.userPinnedSessionId = null;
+          }
+        } else if (rows.length) {
+          setSelectedSession(rows[0]);
+        }
+        const activeCount = rows.filter(function(item) { return !item.archived; }).length;
+        const totalTokens = rows.reduce(function(sum, item) {
+          return sum + (Number(item.total_tokens) || 0);
+        }, 0);
+        statusEl.textContent = rows.length > 0 ? 'ok' : 'empty';
+        statusEl.className = statusBadgeClass(rows.length > 0 ? 'ok' : 'warning');
+        summaryEl.innerHTML = [
+          statCard('Recent Sessions', rows.length, '当前最近会话返回条数'),
+          statCard('Active', activeCount, '未归档会话数'),
+          statCard('Tokens', formatNumber(totalTokens), '最近会话累计 token 数')
+        ].join('');
+        if (!rows.length) {
+          listEl.innerHTML = '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">最近会话列表为空，未展示明细。</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(sessionRow).join('');
+      } catch (error) {
+        if (classifyTransientError(error)) {
+          summaryEl.innerHTML = '';
+          renderTransientPanelState(statusEl, [listEl], 'Sessions', error);
+          return;
+        }
+        statusEl.textContent = 'error';
+        statusEl.className = statusBadgeClass('error');
+        summaryEl.innerHTML = '';
+        listEl.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Sessions 加载失败：' + escapeHtml(summarizeError(error)) + '</div>';
+      }
+    }
+
+    async function runSelfCheck() {
+      const badge = document.getElementById('self-check-badge');
+      const grid = document.getElementById('self-check-grid');
+      badge.textContent = 'running';
+      badge.className = statusBadgeClass('running');
+
+      const results = [];
+
+      try {
+        const started = performance.now();
+        const deepHealth = await safeJson(api.deepHealth);
+        const cost = Math.round(performance.now() - started);
+        const checks = deepHealth && deepHealth.checks ? deepHealth.checks : {};
+        ['postgres', 'redis', 'embedding'].forEach(function(name) {
+          const item = checks[name] || {};
+          const status = item.status || 'unknown';
+          let detail = 'status=' + status + '; ' + cost + 'ms';
+          if (name === 'embedding') {
+            detail += '; provider=' + (item.provider || 'unknown') + '; model=' + (item.model || 'unknown');
+          }
+          results.push({
+            name: 'Deep Health / ' + name,
+            status: status,
+            detail: detail,
+            tone: toneFromStatus(status),
+            ok: status === 'ok'
+          });
+        });
+      } catch (error) {
+        results.push({
+          name: 'Deep Health',
+          status: 'unavailable',
+          detail: summarizeError(error),
+          tone: 'error',
+          ok: false
+        });
+      }
+
+      for (const entry of [
+        {
+          name: 'Admin Dashboard',
+          url: api.overview,
+          retries: 2,
+          retryDelayMs: 500,
+          evaluate: function(data, cost) {
+            const status = data && data.overall_status ? data.overall_status : 'degraded';
+            const dbCounts = data && data.health && data.health.db_counts ? data.health.db_counts : {};
+            const detail = 'overall=' + status + '; sessions=' + (dbCounts.sessions != null ? dbCounts.sessions : '-') + '; ' + cost + 'ms';
+            return { status: status, detail: detail, ok: Boolean(data && data.health && data.kg_ops) };
+          }
+        },
+        {
+          name: 'Model Config',
+          url: api.modelConfig,
+          retries: 2,
+          retryDelayMs: 500,
+          evaluate: function(data, cost) {
+            const value = data && data.value ? data.value : {};
+            const routingMode = value.llm_routing_mode || 'unknown';
+            const hasCore = Boolean(value.openai_model || value.summary_model || value.backup_openai_model || value.backup_summary_model);
+            const status = hasCore ? 'ok' : 'degraded';
+            const detail = 'routing=' + routingMode + '; model=' + (value.openai_model || 'unknown') + '; ' + cost + 'ms';
+            return { status: status, detail: detail, ok: hasCore };
+          }
+        }
+      ]) {
+        try {
+          const started = performance.now();
+          const data = await safeJson(entry.url, { retries: entry.retries, retryDelayMs: entry.retryDelayMs });
+          const cost = Math.round(performance.now() - started);
+          const evaluated = entry.evaluate(data, cost);
+          results.push({
+            name: entry.name,
+            status: evaluated.status,
+            detail: evaluated.detail,
+            tone: toneFromStatus(evaluated.status),
+            ok: evaluated.ok
+          });
+        } catch (error) {
+          const transient = classifyTransientError(error);
+          results.push({
+            name: entry.name,
+            status: transient ? 'transient' : 'unavailable',
+            detail: transient
+              ? '短时连接抖动，自动重试后仍未恢复：' + summarizeError(error)
+              : summarizeError(error),
+            tone: transient ? 'warn' : 'error',
+            ok: false
+          });
+        }
+      }
+
+      const allOk = results.length > 0 && results.every(function(item) { return item.status === 'ok' || item.status === 'passed'; });
+      const hasWarning = results.some(function(item) { return item.status === 'warning' || item.status === 'degraded' || item.status === 'partial' || item.status === 'running' || item.status === 'transient' || item.status === 'recovering'; });
+      const anyOk = results.some(function(item) { return item.ok; });
+      const overall = allOk ? 'passed' : (hasWarning ? 'degraded' : (anyOk ? 'partial' : 'failed'));
+      badge.textContent = overall;
+      badge.className = statusBadgeClass(overall);
+
+      const cards = results.map(function(item) {
+        return checkCard(item.name, item.status, item.detail, item.tone);
+      });
+
+      cards.push('<div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700"><div class="font-semibold mb-2">Closeout Status（静态基线）</div><ul class="space-y-1 text-xs"><li>P0-2: blocked</li><li>P1-1: passed</li><li>P1-2: caveated</li><li>P1-3: passed</li></ul></div>');
+      grid.innerHTML = cards.join('');
+    }
+
+    function moveSessionSelection(direction) {
+      if (!appState.recentSessions.length) {
+        return;
+      }
+      const currentId = appState.userPinnedSessionId || appState.selectedSessionId || appState.recentSessions[0].id;
+      const currentIndex = appState.recentSessions.findIndex(function(item) { return item.id === currentId; });
+      const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex = Math.min(appState.recentSessions.length - 1, Math.max(0, safeIndex + direction));
+      const nextSession = appState.recentSessions[nextIndex];
+      if (!nextSession) {
+        return;
+      }
+      setSelectedSession(nextSession, { pinned: true });
+      renderSearchContext();
+      loadSessions();
+      loadResume();
+      loadSessionDetail(nextSession);
+      const query = document.getElementById('search-query').value.trim();
+      if (query) {
+        executeSearch();
+      }
+    }
+
+    function handleWorkbenchShortcuts(event) {
+      const activeTag = document.activeElement && document.activeElement.tagName ? document.activeElement.tagName.toLowerCase() : '';
+      const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+      if (event.key === '/' && !isTyping) {
+        event.preventDefault();
+        const queryEl = document.getElementById('search-query');
+        if (queryEl) {
+          queryEl.focus();
+          queryEl.select();
+        }
+        return;
+      }
+      if (event.key === 'Escape') {
+        const queryEl = document.getElementById('search-query');
+        if (queryEl && queryEl.value) {
+          document.getElementById('search-clear').click();
+          queryEl.blur();
+          return;
+        }
+      }
+      if (isTyping) {
+        return;
+      }
+      if (event.key === 'j' || event.key === 'J') {
+        event.preventDefault();
+        moveSessionSelection(1);
+        return;
+      }
+      if (event.key === 'k' || event.key === 'K') {
+        event.preventDefault();
+        moveSessionSelection(-1);
+      }
+    }
+
+    document.addEventListener('click', function(event) {
+      const button = event.target.closest('[data-session-select]');
+      if (!button) {
+        return;
+      }
+      const sessionId = button.getAttribute('data-session-select');
+      const session = appState.recentSessions.find(function(item) { return item.id === sessionId; });
+      if (!session) {
+        return;
+      }
+      setSelectedSession(session, { pinned: true });
+      persistSelectedSessionId(session.id);
+      renderSearchContext();
+      loadSessions();
+      loadResume();
+      loadSessionDetail(session);
+      const query = document.getElementById('search-query').value.trim();
+      if (query) {
+        executeSearch();
+      }
+    });
+    document.addEventListener('keydown', handleWorkbenchShortcuts);
+    document.getElementById('refresh-self-check').addEventListener('click', function() {
+      loadOverview();
+      loadResume();
+      loadSessionDetail(appState.selectedSessionRecord);
+      loadSessions();
+      loadSearchSessions();
+      runSelfCheck();
+    });
+    document.getElementById('search-submit').addEventListener('click', function() {
+      executeSearch();
+    });
+    document.getElementById('search-query').addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        executeSearch();
+      }
+    });
+    document.getElementById('search-session').addEventListener('change', function() {
+      const matched = syncSelectedSessionFromCurrentControls({ preferControl: true });
+      if (matched) {
+        persistSelectedSessionId(matched.id);
+        setSelectedSession(matched, { pinned: true });
+        renderSearchContext();
+        loadSessions();
+        loadResume();
+        loadSessionDetail(matched);
+      }
+      const query = document.getElementById('search-query').value.trim();
+      if (query) {
+        executeSearch();
+      } else {
+        executeSearch({ preserveIdleMessage: true });
+      }
+    });
+    document.getElementById('search-topk').addEventListener('change', function() {
+      const query = document.getElementById('search-query').value.trim();
+      if (query) {
+        executeSearch();
+      } else {
+        executeSearch({ preserveIdleMessage: true });
+      }
+    });
+    document.getElementById('search-clear').addEventListener('click', function() {
+      document.getElementById('search-query').value = '';
+      document.getElementById('search-meta').textContent = '';
+      document.getElementById('search-results-summary').textContent = '';
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('search-status').textContent = 'idle';
+      document.getElementById('search-status').className = statusBadgeClass('neutral');
+      persistSelectedSessionId(null);
+      writeWorkspaceState({ selectedSessionId: null, searchQuery: '', searchTopK: document.getElementById('search-topk').value });
+      renderSearchContext();
+    });
+    restoreWorkspaceState();
+    loadOverview();
+    loadSearchSessions();
+    loadResume();
+    loadSessions();
+    runSelfCheck();
+  </script>
+</body>
+</html>

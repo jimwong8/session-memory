@@ -1,0 +1,18 @@
+[Unit]
+Description=Session Memory - 会话管理持久存储和超长上下文记忆系统
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=jimwong
+WorkingDirectory=/home/jimwong/session-memory
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose restart
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

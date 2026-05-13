@@ -1,0 +1,38 @@
+groups:
+  - name: session-memory-alerts
+    rules:
+      - alert: SessionMemoryApiDown
+        expr: up{job="session-memory-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Session Memory API 不可用"
+          description: "Prometheus 连续 2 分钟抓不到 session-memory-api 指标。"
+
+      - alert: SessionMemoryDedupeConflictsHigh
+        expr: increase(auto_message_dedupe_conflicts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "自动消息幂等冲突持续出现"
+          description: "最近 15 分钟内 auto_message_dedupe_conflicts_total 持续增长，说明跨主机写入碰撞正在发生。"
+
+      - alert: SessionMemoryEmbeddingFailuresDetected
+        expr: increase(embedding_generate_fail_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Embedding 生成出现失败"
+          description: "最近 15 分钟内 embedding_generate_fail_total 有增长，说明 embedding 生成链路出现异常。"
+
+      - alert: SessionMemoryBackfillNoProgress
+        expr: increase(embedding_backfill_processed_total{result="updated"}[24h]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Embedding backfill 长时间没有进展"
+          description: "最近 24 小时内 embedding_backfill_processed_total{result=\"updated\"} 没有增长，请检查回填任务是否未运行或持续失败。"

@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Memory Dashboard v2 v2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-ok {
+            color: rgb(34 197 94);
+            background-color: rgb(240 253 244);
+        }
+        .status-warning {
+            color: rgb(202 138 4);
+            background-color: rgb(254 249 195);
+        }
+        .status-critical {
+            color: rgb(220 38 38);
+            background-color: rgb(254 242 242);
+        }
+        .status-unknown {
+            color: rgb(107 114 128);
+            background-color: rgb(249 250 251);
+        }
+        .border-ok {
+            border-color: rgb(187 247 208);
+        }
+        .border-warning {
+            border-color: rgb(253 224 71);
+        }
+        .border-critical {
+            border-color: rgb(254 202 202);
+        }
+        .border-unknown {
+            border-color: rgb(229 231 235);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-6 min-h-screen font-sans">
+    <div class="max-w-7xl mx-auto space-y-6">
+        <section class="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <div class="text-sm font-semibold text-indigo-800">Session Center App</div>
+                <div class="text-xs text-indigo-600 mt-1">进入新的 /app 高融合工作台，查看 overview、search、resume、sessions 与 self-check 骨架。</div>
+            </div>
+            <a href="/app" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700">进入会话中心 /app</a>
+        </section>
+        <!-- Header -->
+        <header class="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Session Memory Dashboard</h1>
+                <p class="text-sm text-gray-500 mt-1" id="last-updated">最后更新: 正在加载...</p>
+            </div>
+            <div id="overall-status" class="px-4 py-2 rounded-full font-bold text-sm uppercase tracking-wider status-unknown">
+                LOADING
+            </div>
+        </header>
+
+
+        <div id="model-config-card" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800">LLM Default Model（默认大模型）</h2>
+                    <p class="text-sm text-gray-500">用于控制后端默认聊天模型与摘要模型。保存后会影响后续相关模型调用。</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">OpenAI Model（聊天模型）</span>
+                    <input id="global-openai-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 gpt-4o-mini" />
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Summary Model（摘要模型）</span>
+                    <input id="global-summary-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 gpt-4o-mini" />
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Backup Chat（备援聊天模型）</span>
+                    <input id="global-backup-openai-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 MiniMax-M2.5" />
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Backup Summary（备援摘要模型）</span>
+                    <input id="global-backup-summary-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 MiniMax-M2.5" />
+                </label>
+                <label class="block md:col-span-2 xl:col-span-1">
+                    <span class="text-sm font-medium text-gray-700">Routing Mode（路由模式）</span>
+                    <input id="global-routing-mode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="fallback / load_balance" />
+                </label>
+            </div>
+            <div class="flex items-center gap-3">
+                <button type="button" id="save-model-config" class="px-4 py-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700">Save Model Config（保存模型配置）</button>
+                <span id="model-config-status" class="text-sm text-gray-500">尚未加载</span>
+            </div>
+        </div>
+
+        <!-- Status Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4" id="cards-grid">
+            <!-- Cards will be injected here -->
+        </div>
+
+        <!-- Issue List -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                <h2 class="text-lg font-bold text-gray-800">当前警告与异常 (Issues)</h2>
+            </div>
+            <div class="p-6" id="issues-list">
+                <p class="text-gray-500 italic">正在加载...</p>
+            </div>
+        </div>
+
+        <!-- Metrics Overview -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="metrics-grid">
+            <!-- Metrics will be injected here -->
+        </div>
+
+        <!-- Ops Control Panel -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="ops-grid">
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] gap-4">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" id="ops-feedback-card">
+                <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800">Operation Feedback（操作反馈）</h2>
+                        <p class="text-sm text-gray-500">展示最近一次操作的状态、目标接口与结果预览。</p>
+                    </div>
+                    <div id="ops-feedback-badge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-gray-100 text-gray-500 border border-gray-200">
+                        idle
+                    </div>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">当前状态</p>
+                            <p id="ops-feedback-status" class="mt-2 text-lg font-bold text-gray-800">等待操作</p>
+                        </div>
+                        <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 md:col-span-2">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">最近操作</p>
+                            <p id="ops-feedback-action" class="mt-2 text-sm font-semibold text-gray-800">尚未执行</p>
+                            <p id="ops-feedback-endpoint" class="mt-1 text-xs text-gray-500 break-all">endpoint: -</p>
+                        </div>
+                    </div>
+                    <div id="ops-feedback-message" class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                        点击任一操作按钮后，这里会显示加载中、成功或失败反馈。
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wide">Latest Result Preview（结果预览）</h3>
+                            <span class="text-xs text-gray-400">保留最近一次响应</span>
+                        </div>
+                        <pre id="ops-feedback-preview" class="max-h-80 overflow-auto rounded-xl bg-gray-900 text-green-100 text-xs leading-6 p-4 border border-gray-800">尚无结果</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" id="ops-history-card">
+                <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800">Recent Operation History（近期操作历史）</h2>
+                        <p class="text-sm text-gray-500">优先展示后端持久化历史；若接口暂未返回该字段，则回退到页面内存中的最近操作。</p>
+                    </div>
+                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-gray-100 text-gray-500 border border-gray-200">
+                        latest first · top 10
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div id="ops-history-list" class="space-y-3">
+                        <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                            暂无历史记录，执行操作后将在这里显示。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6" id="homepage-admin-overview">
+            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800">Homepage Admin Overview（首页总览）</h2>
+                    <p class="text-sm text-gray-500" id="home-overview-meta">展示后端 dashboard / model config 的实时总览。</p>
+                </div>
+                <button type="button" id="refresh-home-overview" class="px-4 py-2 rounded bg-slate-700 text-white font-semibold hover:bg-slate-800">Refresh Overview（刷新总览）</button>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div id="ai-ops-advice-panel" class="bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm text-gray-600">正在加载 AI Ops Advice...</div>
+                <div id="opencode-runtime-panel" class="bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm text-gray-600">正在加载 OpenCode Runtime...</div>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+                <div id="routing-summary-panel" class="bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm text-gray-600">正在加载模型路由与运维汇总...</div>
+                <div id="operation-history-panel-inline" class="bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm text-gray-600">正在加载操作历史...</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="continuation-ops-grid"></div>
+    </div>
+
+    <script>
+        const API_BASE = "http://10.100.1.13:8000";
+        const API_URL = `${API_BASE}/api/v1/admin/dashboard`;
+        const OPS_HISTORY_LIMIT = 10;
+        const opsFeedbackState = {
+            phase: "idle",
+            action: "尚未执行",
+            endpoint: "-",
+            message: "点击任一操作按钮后，这里会显示加载中、成功或失败反馈。",
+            preview: "尚无结果"
+        };
+        const opsHistoryState = [];
+        let opsHistoryCounter = 0;
+        let opsHistorySource = "local";
+
+
+
+        async function loadModelConfig() {
+            const statusEl = document.getElementById('model-config-status');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/admin/config/model`);
+                const data = await response.json();
+                document.getElementById('global-openai-model').value = data.value?.openai_model || '';
+                document.getElementById('global-summary-model').value = data.value?.summary_model || '';
+                document.getElementById('global-backup-openai-model').value = data.value?.backup_openai_model || '';
+                document.getElementById('global-backup-summary-model').value = data.value?.backup_summary_model || '';
+                document.getElementById('global-routing-mode').value = data.value?.llm_routing_mode || 'fallback';
+                statusEl.textContent = '已加载当前默认模型配置';
+            } catch (e) {
+                statusEl.textContent = `加载失败: ${e.message}`;
+            }
+        }
+
+        async function saveModelConfig() {
+            const statusEl = document.getElementById('model-config-status');
+            const payload = {
+                openai_model: document.getElementById('global-openai-model').value.trim(),
+                summary_model: document.getElementById('global-summary-model').value.trim(),
+                backup_openai_model: document.getElementById('global-backup-openai-model').value.trim(),
+                backup_summary_model: document.getElementById('global-backup-summary-model').value.trim(),
+                llm_routing_mode: document.getElementById('global-routing-mode').value.trim(),
+            };
+            try {
+                statusEl.textContent = '保存中...';
+                const response = await fetch(`${API_BASE}/api/v1/admin/config/model`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                statusEl.textContent = `已保存: ${data.value?.openai_model} / ${data.value?.summary_model} / backup=${data.value?.backup_openai_model || '-'} / mode=${data.value?.llm_routing_mode || 'fallback'}`;
+            } catch (e) {
+                statusEl.textContent = `保存失败: ${e.message}`;
+            }
+        }
+
+        function getStatusColorClass(status) {
+            if (status === "ok") return "status-ok border-ok";
+            if (status === "warning") return "status-warning border-warning";
+            if (status === "critical") return "status-critical border-critical";
+            if (status === "idle") return "status-unknown border-unknown";
+            return "status-unknown border-unknown";
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function getOpsFeedbackTheme(phase) {
+            if (phase === "loading") {
+                return {
+                    badge: "bg-blue-50 text-blue-700 border-blue-200",
+                    statusText: "text-blue-700",
+                    messageBox: "border-blue-200 bg-blue-50 text-blue-700"
+                };
+            }
+            if (phase === "success") {
+                return {
+                    badge: "bg-green-50 text-green-700 border-green-200",
+                    statusText: "text-green-700",
+                    messageBox: "border-green-200 bg-green-50 text-green-700"
+                };
+            }
+            if (phase === "error") {
+                return {
+                    badge: "bg-red-50 text-red-700 border-red-200",
+                    statusText: "text-red-700",
+                    messageBox: "border-red-200 bg-red-50 text-red-700"
+                };
+            }
+            return {
+                badge: "bg-gray-100 text-gray-500 border-gray-200",
+                statusText: "text-gray-800",
+                messageBox: "border-gray-100 bg-gray-50 text-gray-600"
+            };
+        }
+
+        function getOpsHistoryTheme(phase) {
+            if (phase === "loading") {
+                return {
+                    badge: "bg-blue-50 text-blue-700 border-blue-200",
+                    card: "border-blue-100 bg-blue-50/40"
+                };
+            }
+            if (phase === "success") {
+                return {
+                    badge: "bg-green-50 text-green-700 border-green-200",
+                    card: "border-green-100 bg-green-50/40"
+                };
+            }
+            if (phase === "error") {
+                return {
+                    badge: "bg-red-50 text-red-700 border-red-200",
+                    card: "border-red-100 bg-red-50/40"
+                };
+            }
+            return {
+                badge: "bg-gray-100 text-gray-500 border-gray-200",
+                card: "border-gray-200 bg-gray-50"
+            };
+        }
+
+        function formatPreview(value) {
+            if (value === undefined || value === null) {
+                return "null";
+            }
+            if (typeof value === "string") {
+                return value;
+            }
+            try {
+                return JSON.stringify(value, null, 2);
+            } catch {
+                return String(value);
+            }
+        }
+
+        function formatTimestamp(date = new Date()) {
+            return new Intl.DateTimeFormat("zh-CN", {
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit"
+            }).format(date);
+        }
+
+        function parseHistoryTimestamp(value) {
+            if (!value) {
+                return null;
+            }
+            const date = value instanceof Date ? value : new Date(value);
+            return Number.isNaN(date.getTime()) ? null : date;
+        }
+
+        function formatHistoryTimestamp(value) {
+            const parsed = parseHistoryTimestamp(value);
+            return parsed ? formatTimestamp(parsed) : "时间未知";
+        }
+
+        function normalizeHistoryPhase(value) {
+            const normalized = String(value ?? "").trim().toLowerCase();
+            if (["ok", "success", "succeeded", "completed", "done"].includes(normalized)) {
+                return "success";
+            }
+            if (["error", "failed", "failure", "critical"].includes(normalized)) {
+                return "error";
+            }
+            if (["loading", "pending", "running", "queued", "processing", "in_progress"].includes(normalized)) {
+                return "loading";
+            }
+            return "idle";
+        }
+
+        function truncateText(value, maxLength = 140) {
+            const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+            if (!normalized) {
+                return "暂无结果摘要";
+            }
+            return normalized.length > maxLength
+                ? `${normalized.slice(0, maxLength - 1)}…`
+                : normalized;
+        }
+
+        function summarizeResult(value, fallback = "请求已完成") {
+            if (value === undefined || value === null) {
+                return fallback;
+            }
+            if (typeof value === "string") {
+                return truncateText(value);
+            }
+            if (typeof value === "object") {
+                const detail = value.detail || value.message || value.error || value.status;
+                if (detail) {
+                    return truncateText(detail);
+                }
+                const keys = Object.keys(value);
+                if (keys.length === 0) {
+                    return fallback;
+                }
+                return truncateText(`返回字段: ${keys.slice(0, 4).join(", ")}${keys.length > 4 ? " 等" : ""}`);
+            }
+            return truncateText(value);
+        }
+
+        function updateOpsFeedback(nextState = {}) {
+            Object.assign(opsFeedbackState, nextState);
+            const theme = getOpsFeedbackTheme(opsFeedbackState.phase);
+
+            const badgeEl = document.getElementById("ops-feedback-badge");
+            const statusEl = document.getElementById("ops-feedback-status");
+            const actionEl = document.getElementById("ops-feedback-action");
+            const endpointEl = document.getElementById("ops-feedback-endpoint");
+            const messageEl = document.getElementById("ops-feedback-message");
+            const previewEl = document.getElementById("ops-feedback-preview");
+
+            badgeEl.className = `inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${theme.badge}`;
+            badgeEl.textContent = opsFeedbackState.phase;
+
+            statusEl.className = `mt-2 text-lg font-bold ${theme.statusText}`;
+            statusEl.textContent =
+                opsFeedbackState.phase === "loading"
+                    ? "请求执行中"
+                    : opsFeedbackState.phase === "success"
+                        ? "操作执行成功"
+                        : opsFeedbackState.phase === "error"
+                            ? "操作执行失败"
+                            : "等待操作";
+
+            actionEl.textContent = opsFeedbackState.action;
+            endpointEl.textContent = `endpoint: ${opsFeedbackState.endpoint}`;
+            messageEl.className = `rounded-lg border px-4 py-3 text-sm ${theme.messageBox}`;
+            messageEl.textContent = opsFeedbackState.message;
+            previewEl.textContent = opsFeedbackState.preview;
+        }
+
+        function renderOpsHistory() {
+            const historyEl = document.getElementById("ops-history-list");
+            if (!historyEl) {
+                return;
+            }
+
+            if (opsHistoryState.length === 0) {
+                historyEl.innerHTML = `
+                    <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                        暂无历史记录，执行操作后将在这里显示。
+                    </div>
+                `;
+                return;
+            }
+
+            historyEl.innerHTML = opsHistoryState.map((entry) => {
+                const theme = getOpsHistoryTheme(entry.phase);
+                return `
+                    <article class="rounded-xl border p-4 ${theme.card}">
+                        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div class="min-w-0 space-y-2">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h3 class="text-sm font-bold text-gray-800">${escapeHtml(entry.action)}</h3>
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide border ${theme.badge}">${escapeHtml(entry.phase)}</span>
+                                </div>
+                                <p class="text-xs text-gray-500 break-all">${escapeHtml(entry.locationLabel || "endpoint/target: -")}</p>
+                            </div>
+                            <p class="shrink-0 text-xs font-medium text-gray-400">${escapeHtml(entry.timestampLabel)}</p>
+                        </div>
+                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-[92px_minmax(0,1fr)] gap-2 text-sm">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Result（结果）</p>
+                            <p class="text-gray-700 break-words">${escapeHtml(entry.summary)}</p>
+                        </div>
+                    </article>
+                `;
+            }).join("");
+        }
+
+        function normalizeOperationHistoryEntry(entry, index = 0) {
+            const record = entry && typeof entry === "object" ? entry : { summary: entry };
+            const action = record.action_label || record.action || record.operation || record.name || `操作记录 ${index + 1}`;
+            const endpoint = record.endpoint || record.url || record.path || record.api_endpoint || record.route || "";
+            const target = record.target || record.resource || record.object || record.session_id || record.project_id || record.entity_id || "";
+            const locationLabel = endpoint
+                ? `endpoint: ${endpoint}`
+                : target
+                    ? `target: ${target}`
+                    : "endpoint/target: -";
+            const timestampValue = record.timestamp || record.created_at || record.updated_at || record.occurred_at || record.finished_at || null;
+            const phase = normalizeHistoryPhase(record.phase || record.status || record.state || record.result);
+            const summarySource = record.summary || record.result_summary || record.message || record.detail || record.error || record.result || record.response || record.payload;
+            const summary = summarizeResult(summarySource, "请求已完成");
+            const parsedTimestamp = parseHistoryTimestamp(timestampValue);
+
+            return {
+                id: record.id || record.operation_id || record.request_id || `ops-history-remote-${index}`,
+                action,
+                endpoint,
+                target,
+                locationLabel,
+                phase,
+                summary,
+                timestampLabel: formatHistoryTimestamp(timestampValue),
+                timestampMs: parsedTimestamp ? parsedTimestamp.getTime() : 0
+            };
+        }
+
+        function hydrateOpsHistoryFromApi(history) {
+            if (!Array.isArray(history)) {
+                return;
+            }
+            const normalizedHistory = history
+                .map((entry, index) => normalizeOperationHistoryEntry(entry, index))
+                .sort((a, b) => b.timestampMs - a.timestampMs)
+                .slice(0, OPS_HISTORY_LIMIT);
+
+            opsHistorySource = "api";
+            opsHistoryState.splice(0, opsHistoryState.length, ...normalizedHistory);
+            renderOpsHistory();
+        }
+
+        function createHistoryEntry({ action, endpoint, target, phase, summary }) {
+            const timestamp = new Date();
+            const entry = {
+                id: `ops-history-${Date.now()}-${++opsHistoryCounter}`,
+                action,
+                endpoint: endpoint || "",
+                target: target || "",
+                locationLabel: endpoint
+                    ? `endpoint: ${endpoint}`
+                    : target
+                        ? `target: ${target}`
+                        : "endpoint/target: -",
+                phase,
+                summary,
+                timestampLabel: formatTimestamp(timestamp),
+                timestampMs: timestamp.getTime()
+            };
+            if (opsHistorySource === "api") {
+                opsHistoryState.splice(0, opsHistoryState.length);
+                opsHistorySource = "local";
+            }
+            opsHistoryState.unshift(entry);
+            opsHistoryState.splice(OPS_HISTORY_LIMIT);
+            renderOpsHistory();
+            return entry.id;
+        }
+
+        function updateHistoryEntry(entryId, nextState = {}) {
+            const index = opsHistoryState.findIndex((entry) => entry.id === entryId);
+            if (index === -1) {
+                return;
+            }
+            const timestamp = new Date();
+            opsHistoryState[index] = {
+                ...opsHistoryState[index],
+                ...nextState,
+                timestampLabel: formatTimestamp(timestamp),
+                timestampMs: timestamp.getTime()
+            };
+            renderOpsHistory();
+        }
+
+        function setOpsButtonsDisabled(disabled) {
+            document.querySelectorAll("[data-ops-button='true']").forEach((button) => {
+                button.disabled = disabled;
+                button.classList.toggle("opacity-50", disabled);
+                button.classList.toggle("cursor-not-allowed", disabled);
+                button.classList.toggle("hover:scale-[1.01]", !disabled);
+            });
+        }
+
+        function getActionLabel(button, fallbackUrl) {
+            return button?.dataset?.actionLabel || fallbackUrl;
+        }
+
+        function renderCard(title, sectionData, metricHtml = "") {
+            const status = sectionData.status || "unknown";
+            const colorClass = getStatusColorClass(status);
+            const issueCount = (sectionData.issues || []).length;
+
+            return `
+                <div class="bg-white rounded-xl shadow-sm border-l-4 p-5 ${colorClass}">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-bold text-gray-700">${title}</h3>
+                        <span class="text-xs font-bold px-2 py-1 rounded uppercase ${colorClass.split(' ')[0]} bg-white border ${colorClass.split(' ')[1]}">
+                            ${status}
+                        </span>
+                    </div>
+                    ${metricHtml}
+                    ${issueCount > 0 ? `<div class="mt-3 text-xs font-medium text-red-500 bg-red-50 px-2 py-1 rounded inline-block">${issueCount} Issue(s)（异常项）</div>` : ''}
+                </div>
+            `;
+        }
+
+        function renderIssues(data) {
+            const allIssues = [];
+
+            Object.entries(data).forEach(([key, section]) => {
+                if (section?.issues?.length > 0) {
+                    section.issues.forEach(issue => {
+                        const issueText = typeof issue === 'string' ? issue : JSON.stringify(issue);
+                        allIssues.push({ module: key, text: issueText, status: section.status });
+                    });
+                }
+            });
+
+            if (allIssues.length === 0) {
+                return `<div class="flex items-center text-green-600"><svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>系统运行良好，无警告项。</div>`;
+            }
+
+            return `<ul class="space-y-3">
+                ${allIssues.map(i => `
+                    <li class="flex items-start p-3 bg-gray-50 rounded-lg">
+                        <span class="px-2 py-1 text-xs font-bold rounded uppercase mr-3 mt-0.5 ${i.status === 'critical' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}">${i.module}</span>
+                        <span class="text-gray-700 text-sm break-all font-mono">${i.text}</span>
+                    </li>
+                `).join('')}
+            </ul>`;
+        }
+
+        function renderCapacityMetrics(cap) {
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex flex-col gap-3 mb-4 border-b pb-3">
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <h3 class="font-bold text-gray-800">容量快照 (Capacity Snapshot)</h3>
+                        <div class="inline-flex items-center gap-2 self-start rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-sky-700">
+                            <span>Latest Audit Snapshot</span>
+                            <span class="text-sky-300">•</span>
+                            <span>用于对账</span>
+                        </div>
+                    </div>
+                    <p class="text-sm leading-6 text-gray-600">这是最近一次审计/汇总生成的快照，适合看总体容量、对账和趋势。它不是实时队列，所以会落后于当前运行状态。</p>
+                    <div class="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                        <span class="font-semibold">如何理解：</span>如果这里的 KG Pending / Deadletter 与右侧实时态不一致，通常以 <span class="font-semibold">KG Ops Realtime</span> 作为当前值班操作依据，把这里当作最近一次盘点结果。
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><p class="text-xs text-gray-500">活跃会话</p><p class="text-xl font-bold">${cap.active_sessions || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">总消息数</p><p class="text-xl font-bold">${cap.total_messages || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">KG Pending（待处理）</p><p class="text-xl font-bold ${cap.kg_jobs_pending > 0 ? 'text-yellow-600' : ''}">${cap.kg_jobs_pending || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">KG Deadletter（死信）</p><p class="text-xl font-bold ${cap.kg_jobs_deadletter > 0 ? 'text-red-600' : ''}">${cap.kg_jobs_deadletter || 0}</p></div>
+                </div>
+            </div>`;
+        }
+
+        function renderContinuationOps(remote, ops) {
+            const latestAge = remote?.created_at ? Math.floor((Date.now() - new Date(remote.created_at).getTime()) / 1000) : null;
+            const autoContinuedCount = ops?.auto_continued_count || 0;
+            const lastConsumedExists = !!ops?.last_consumed_exists;
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">Continuation Ops（续跑运维）</h3>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><p class="text-xs text-gray-500">Latest Failure Code（最近失败码）</p><p class="text-sm font-bold break-all">${remote?.failure_code || 'none'}</p></div>
+                    <div><p class="text-xs text-gray-500">Latest Age (s)（距今秒数）</p><p class="text-xl font-bold">${latestAge ?? '-'}</p></div>
+                    <div><p class="text-xs text-gray-500">Auto Continued Sessions（自动续跑会话）</p><p class="text-xl font-bold text-blue-600">${autoContinuedCount}</p></div>
+                    <div><p class="text-xs text-gray-500">Last Consumed Exists（最近消费记录）</p><p class="text-xl font-bold ${lastConsumedExists ? 'text-green-600' : 'text-gray-400'}">${lastConsumedExists ? 'YES' : 'NO'}</p></div>
+                </div>
+                <div class="text-sm text-gray-700 space-y-2">
+                    <div><span class="text-gray-500">Latest Source（最近来源）:</span> <span class="font-mono break-all">${ops?.latest_source_session_id || remote?.source_session_id || 'none'}</span></div>
+                    <div><span class="text-gray-500">Consumed By（消费目标）:</span> <span class="font-mono break-all">${ops?.latest_consumed_by_session_id || remote?.consumed_by_session_id || 'none'}</span></div>
+                </div>
+            </div>`;
+        }
+
+        async function postOps(url, button) {
+            const actionLabel = getActionLabel(button, url);
+            const historyEntryId = createHistoryEntry({
+                action: actionLabel,
+                endpoint: url,
+                phase: "loading",
+                summary: "请求已发送，等待接口返回结果。"
+            });
+
+            setOpsButtonsDisabled(true);
+            updateOpsFeedback({
+                phase: "loading",
+                action: actionLabel,
+                endpoint: url,
+                message: `正在执行 ${actionLabel}，请求完成前按钮已禁用。`,
+                preview: "等待响应..."
+            });
+
+            try {
+                const response = await fetch(url, { method: 'POST' });
+                const rawText = await response.text();
+                let data;
+
+                try {
+                    data = rawText ? JSON.parse(rawText) : {};
+                } catch {
+                    data = { raw_response: rawText };
+                }
+
+                if (!response.ok) {
+                    const errorMessage = data?.detail || data?.message || `HTTP error! status: ${response.status}`;
+                    updateOpsFeedback({
+                        phase: "error",
+                        action: actionLabel,
+                        endpoint: url,
+                        message: `${actionLabel} 失败：${errorMessage}`,
+                        preview: formatPreview(data)
+                    });
+                    updateHistoryEntry(historyEntryId, {
+                        phase: "error",
+                        summary: truncateText(errorMessage)
+                    });
+                    throw new Error(errorMessage);
+                }
+
+                updateOpsFeedback({
+                    phase: "success",
+                    action: actionLabel,
+                    endpoint: url,
+                    message: `${actionLabel} 已完成，仪表盘数据正在刷新。`,
+                    preview: formatPreview(data)
+                });
+                updateHistoryEntry(historyEntryId, {
+                    phase: "success",
+                    summary: summarizeResult(data, `${actionLabel} 已完成`)
+                });
+
+                await fetchData();
+            } catch (e) {
+                console.error(e);
+                if (opsFeedbackState.phase !== "error") {
+                    updateOpsFeedback({
+                        phase: "error",
+                        action: actionLabel,
+                        endpoint: url,
+                        message: `${actionLabel} 失败：${e.message}`,
+                        preview: e.stack || e.message || "未知错误"
+                    });
+                }
+                updateHistoryEntry(historyEntryId, {
+                    phase: "error",
+                    summary: truncateText(e.message || "未知错误")
+                });
+            } finally {
+                setOpsButtonsDisabled(false);
+            }
+        }
+
+        function renderOpsButton(url, label, colorClasses) {
+            return `<button
+                type="button"
+                data-ops-button="true"
+                data-action-label="${escapeHtml(label)}"
+                data-ops-url="${escapeHtml(url)}"
+                class="px-4 py-2 rounded text-white font-semibold transition ${colorClasses}"
+            >${label}</button>`;
+        }
+
+        function renderOpsActions() {
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">Ops Actions（运维操作）</h3>
+                <div class="flex flex-wrap gap-3">
+                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters', 'Requeue Deadletters（重入死信）', 'bg-yellow-500 hover:bg-yellow-600')}
+                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters?reason=json_extract_failed', 'Requeue JSON Failures（重试 JSON 失败）', 'bg-orange-500 hover:bg-orange-600')}
+                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters?reason=rate_limited_upstream', 'Requeue Rate Limited（重试限流任务）', 'bg-amber-500 hover:bg-amber-600')}
+                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters?reason=extract_exception', 'Requeue Exceptions（重试异常任务）', 'bg-rose-500 hover:bg-rose-600')}
+                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/run-kg-worker-once', 'Run KG Worker Once（执行一次 KG Worker）', 'bg-blue-600 hover:bg-blue-700')}
+                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/reconcile-continuation-metrics', 'Reconcile Continuation Metrics（校准续跑指标）', 'bg-emerald-600 hover:bg-emerald-700')}
+                </div>
+            </div>`;
+        }
+
+        function bindOpsActionButtons() {
+            document.querySelectorAll("[data-ops-button='true']").forEach((button) => {
+                if (button.dataset.bound === "true") {
+                    return;
+                }
+                button.dataset.bound = "true";
+                button.addEventListener("click", () => {
+                    postOps(button.dataset.opsUrl, button);
+                });
+            });
+        }
+
+        function renderContinuationMetricsCard(metrics) {
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">Continuation Metrics（续跑指标）</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><p class="text-xs text-gray-500">Has Latest（有最近记录）</p><p class="text-xl font-bold ${metrics?.has_latest ? 'text-green-600' : 'text-gray-400'}">${metrics?.has_latest ? 'YES' : 'NO'}</p></div>
+                    <div><p class="text-xs text-gray-500">Pending（待处理）</p><p class="text-xl font-bold">${metrics?.pending ?? 0}</p></div>
+                    <div><p class="text-xs text-gray-500">Consumed（已消费）</p><p class="text-xl font-bold">${metrics?.consumed ?? 0}</p></div>
+                    <div><p class="text-xs text-gray-500">Latest Age (s)（距今秒数）</p><p class="text-xl font-bold">${metrics?.latest_age_seconds ?? '-'}</p></div>
+                </div>
+                <div class="mt-4 text-sm text-gray-700 space-y-2"><div><span class="text-gray-500">Failure Code（失败码）:</span> <span class="font-mono break-all">${metrics?.failure_code || 'none'}</span></div><div><span class="text-gray-500">Consumed Count（消费次数）:</span> <span class="font-bold">${metrics?.consumed ?? 0}</span></div></div>
+            </div>`;
+        }
+
+        function renderKGOpsMetrics(ops) {
+            const deadletters = (ops.deadletter_reasons || []).map(r => `<li class="flex justify-between text-sm py-1 border-b border-gray-100"><span class="font-mono break-all mr-2">${r.reason}</span><span class="font-bold text-red-600">${r.count}</span></li>`).join('') || '<li class="text-sm text-gray-500">无 deadletter</li>';
+            const pendingReasons = (ops.pending_reasons || []).map(r => `<li class="flex justify-between text-sm py-1 border-b border-gray-100"><span class="font-mono break-all mr-2">${r.reason}</span><span class="font-bold text-amber-600">${r.count}</span></li>`).join('') || '<li class="text-sm text-gray-500">无 pending 原因</li>';
+            const workers = (ops.running_workers || []).map(w => `<li class="flex justify-between text-sm py-1 border-b border-gray-100"><span class="font-mono break-all mr-2">${w.worker_id}</span><span class="font-bold text-blue-600">${w.count}</span></li>`).join('') || '<li class="text-sm text-gray-500">无运行 worker</li>';
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex flex-col gap-3 mb-4 border-b pb-3">
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <h3 class="font-bold text-gray-800">KG 实时态 (KG Ops Realtime)</h3>
+                        <div class="inline-flex items-center gap-2 self-start rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                            <span>Live Queue State</span>
+                            <span class="text-emerald-300">•</span>
+                            <span>当前操作优先看这里</span>
+                        </div>
+                    </div>
+                    <p class="text-sm leading-6 text-gray-600">这里直接反映当前 KG 队列的实时状态，适合值班判断现在还有多少任务待处理、正在运行或已经进入死信。</p>
+                    <div class="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        <span class="font-semibold">操作建议：</span>当你要决定是否重试、清理死信或判断当前积压时，优先信任 <span class="font-semibold">KG Ops Realtime</span>。如果它与 Capacity Snapshot 不同，通常代表快照生成后队列又发生了变化。
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><p class="text-xs text-gray-500">Pending（待处理）</p><p class="text-xl font-bold">${ops.pending_total || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">Running（运行中）</p><p class="text-xl font-bold">${ops.running_total || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">Succeeded（成功）</p><p class="text-xl font-bold text-green-600">${ops.succeeded_total || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">Deadletter（死信）</p><p class="text-xl font-bold text-red-600">${ops.deadletter_total || 0}</p></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div><h4 class="text-sm font-semibold mb-2">Pending Reasons（待处理原因）</h4><ul class="space-y-1 max-h-64 overflow-auto">${pendingReasons}</ul></div>
+                    <div><h4 class="text-sm font-semibold mb-2">Deadletter Reasons（死信原因）</h4><ul class="space-y-1 max-h-64 overflow-auto">${deadletters}</ul></div>
+                    <div><h4 class="text-sm font-semibold mb-2">Running Workers（运行 Worker）</h4><ul class="space-y-1 max-h-64 overflow-auto">${workers}</ul></div>
+                </div>
+            </div>`;
+        }
+
+        function getCoverageDescriptor(count, baseline) {
+            const safeCount = Number(count) || 0;
+            const safeBaseline = Number(baseline) || 0;
+
+            if (safeCount <= 0) {
+                return {
+                    label: "无覆盖",
+                    classes: "bg-gray-100 text-gray-600 border-gray-200"
+                };
+            }
+
+            if (safeBaseline <= 0) {
+                return {
+                    label: safeCount > 0 ? "已存在" : "无覆盖",
+                    classes: safeCount > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-gray-100 text-gray-600 border-gray-200"
+                };
+            }
+
+            const ratio = safeCount / safeBaseline;
+            if (ratio >= 1) {
+                return {
+                    label: "高覆盖",
+                    classes: "bg-green-50 text-green-700 border-green-200"
+                };
+            }
+            if (ratio >= 0.5) {
+                return {
+                    label: "部分覆盖",
+                    classes: "bg-yellow-50 text-yellow-700 border-yellow-200"
+                };
+            }
+            return {
+                label: "低覆盖",
+                classes: "bg-orange-50 text-orange-700 border-orange-200"
+            };
+        }
+
+        function renderCoverageBadge(prefix, count, baseline) {
+            const descriptor = getCoverageDescriptor(count, baseline);
+            return `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${descriptor.classes}">${prefix}：${descriptor.label}</span>`;
+        }
+
+        function renderSharedMemoryProjectSamples(projectSamples) {
+            if (!Array.isArray(projectSamples)) {
+                return `
+                    <div class="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                        当前 payload 未提供 project_samples，已回退为仅展示聚合统计。
+                    </div>
+                `;
+            }
+
+            if (projectSamples.length === 0) {
+                return `
+                    <div class="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                        project_samples 为空，暂时没有可用于质量抽样的项目。
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="mt-6 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h4 class="text-sm font-bold text-gray-800">项目样本质量 (Project Samples)</h4>
+                            <p class="text-xs text-gray-500 mt-1">基于现有审计 payload 抽样展示每个项目的摘要 / KG 覆盖情况，帮助值班人员快速判断样本质量。</p>
+                        </div>
+                        <span class="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border bg-gray-100 text-gray-700 border-gray-200">
+                            样本 ${projectSamples.length}
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        ${projectSamples.map((sample) => {
+                            const sessionCount = Number(sample?.session_count) || 0;
+                            const summaryCount = Number(sample?.summary_count) || 0;
+                            const kgEntityCount = Number(sample?.kg_entity_count) || 0;
+                            const projectId = sample?.project_id || 'unknown';
+                            return `
+                                <article class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                                    <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Project ID（项目 ID）</p>
+                                            <p class="mt-1 text-sm font-bold text-gray-800 font-mono break-all">${escapeHtml(projectId)}</p>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            ${renderCoverageBadge('摘要覆盖', summaryCount, sessionCount)}
+                                            ${renderCoverageBadge('KG覆盖', kgEntityCount, sessionCount)}
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div class="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                                            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Session Count（会话数）</p>
+                                            <p class="mt-1 text-lg font-bold text-gray-900">${sessionCount}</p>
+                                        </div>
+                                        <div class="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                                            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Summary Count（摘要数）</p>
+                                            <p class="mt-1 text-lg font-bold text-gray-900">${summaryCount}</p>
+                                        </div>
+                                        <div class="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                                            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">KG Entity Count（KG 实体数）</p>
+                                            <p class="mt-1 text-lg font-bold text-gray-900">${kgEntityCount}</p>
+                                        </div>
+                                    </div>
+                                </article>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function escapeSummary(value) {
+            return escapeHtml(String(value ?? '')).replace(/\n/g, '<br>');
+        }
+
+        function renderAiOpsAdvice(section) {
+            const actions = Array.isArray(section?.recommended_actions) ? section.recommended_actions : [];
+            const items = actions.map((item) => `
+                <div class="rounded-lg border border-gray-200 bg-white p-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="font-semibold text-gray-800">${escapeHtml(item.area || 'general')}</div>
+                        <div class="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">${escapeHtml(item.priority || 'medium')}</div>
+                    </div>
+                    <div class="text-sm text-gray-700 mt-2">${escapeHtml(item.action || '—')}</div>
+                    <div class="text-xs text-gray-500 mt-2">风险：${escapeHtml(item.risk || '—')}</div>
+                </div>
+            `).join('') || '<div class="text-sm text-gray-500">暂无 AI 运维建议。</div>';
+            return `
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-bold text-gray-800">AI Ops Advice</h3>
+                        <div class="px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">${escapeHtml(section?.risk_level || 'unknown')}</div>
+                    </div>
+                    <div class="text-sm text-gray-700 leading-6">${escapeSummary(section?.summary || '暂无总结。')}</div>
+                    <div class="text-xs text-gray-500">Model: ${escapeHtml(section?.model_used || '—')}</div>
+                    <div class="grid grid-cols-1 gap-3">${items}</div>
+                </div>
+            `;
+        }
+
+        function getRuntimeActionClasses(action) {
+            if (action === 'manual_investigate') return 'bg-rose-50 text-rose-700 border-rose-100';
+            if (action === 'apply_repair_candidate') return 'bg-orange-50 text-orange-700 border-orange-100';
+            if (action === 'dry_run_repair') return 'bg-amber-50 text-amber-700 border-amber-100';
+            return 'bg-slate-100 text-slate-700 border-slate-200';
+        }
+
+        function getRuntimeStatusClasses(status) {
+            if (status === 'ok') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+            if (status === 'warning') return 'bg-amber-50 text-amber-700 border-amber-100';
+            if (status === 'critical') return 'bg-rose-50 text-rose-700 border-rose-100';
+            return 'bg-slate-100 text-slate-700 border-slate-200';
+        }
+
+        function renderRuntimeAction(item) {
+            return `
+                <div class="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="font-mono text-sm text-gray-800 break-all">${escapeHtml(item.session_id || 'unknown')}</div>
+                            <div class="text-xs text-gray-500 mt-1">count=${escapeHtml(String(item.count || 0))}</div>
+                        </div>
+                        <div class="text-xs px-2 py-1 rounded-full border ${getRuntimeActionClasses(item.suggested_action)}">${escapeHtml(item.suggested_action || 'observe')}</div>
+                    </div>
+                    <div class="text-sm text-gray-700 mt-3 leading-6">${escapeHtml(item.reason || '—')}</div>
+                </div>
+            `;
+        }
+
+        function renderOpencodeRuntime(section) {
+            const errorClasses = Object.entries(section?.error_classes || {});
+            const offenders = Array.isArray(section?.repeat_offender_sessions) ? section.repeat_offender_sessions : [];
+            const actions = Array.isArray(section?.repeat_offender_actions) ? section.repeat_offender_actions.slice(0, 5) : [];
+            const manualQueue = actions.filter((item) => item.suggested_action === 'manual_investigate');
+            const statusClasses = getRuntimeStatusClasses(section?.status || 'unknown');
+            return `
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-base font-bold text-gray-800">OpenCode Runtime</h3>
+                            <div class="text-xs text-gray-500 mt-1">聚焦当前 dangling / repeat offender / error class 概览。</div>
+                        </div>
+                        <div class="px-3 py-1 rounded-full text-xs font-semibold border ${statusClasses}">${escapeHtml(section?.status || 'unknown')}</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="rounded-lg border border-rose-100 bg-rose-50 p-3">
+                            <div class="text-xs text-rose-700">Dangling Assistant</div>
+                            <div class="text-2xl font-bold text-rose-800 mt-1">${escapeHtml(String(section?.sqlite?.dangling_assistant_count || 0))}</div>
+                        </div>
+                        <div class="rounded-lg border border-indigo-100 bg-indigo-50 p-3">
+                            <div class="text-xs text-indigo-700">Repeat Offenders</div>
+                            <div class="text-2xl font-bold text-indigo-800 mt-1">${escapeHtml(String(offenders.length))}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold text-gray-800 mb-2">Error Classes</div>
+                        <div class="flex flex-wrap gap-2">
+                            ${errorClasses.length ? errorClasses.map(([name, count]) => `<span class="px-2 py-1 rounded-full text-xs border border-slate-200 bg-slate-50 text-slate-700">${escapeHtml(name)}: ${escapeHtml(String(count))}</span>`).join('') : '<span class="text-sm text-gray-500">暂无 error classes。</span>'}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between gap-3 mb-2">
+                            <div class="text-sm font-semibold text-gray-800">Manual Investigate Queue</div>
+                            <div class="text-xs text-gray-400">需人工接管的会话</div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-3">${manualQueue.length ? manualQueue.map((item) => `<div class="rounded-lg border border-rose-200 bg-rose-50 p-3 shadow-sm"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="font-mono text-sm text-rose-900 break-all">${escapeHtml(item.session_id || 'unknown')}</div><div class="text-xs text-rose-600 mt-1">count=${escapeHtml(String(item.count || 0))}</div></div><div class="text-xs px-2 py-1 rounded-full border border-rose-200 bg-white text-rose-700">manual_investigate</div></div><div class="text-sm text-rose-800 mt-3 leading-6">${escapeHtml(item.reason || '—')}</div><div class="flex flex-wrap gap-2 mt-3"><button data-ops-button="true" data-ops-url="${escapeHtml(`http://10.100.1.13:8000/api/v1/admin/ops/repair-stuck-session?session_id=${encodeURIComponent(item.session_id || '')}`)}" class="px-3 py-1.5 rounded bg-white border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-100">Preview Repair</button><button data-ops-button="true" data-ops-url="${escapeHtml(`http://10.100.1.13:8000/api/v1/admin/ops/repair-stuck-session?session_id=${encodeURIComponent(item.session_id || '')}&apply=true`)}" class="px-3 py-1.5 rounded bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700">Apply Candidate</button></div></div>`).join('') : '<div class="text-sm text-gray-500">暂无需要人工接管的会话。</div>'}</div>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between gap-3 mb-2">
+                            <div class="text-sm font-semibold text-gray-800">Repeat Offender Actions</div>
+                            <div class="text-xs text-gray-400">展示前 5 条建议</div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-3">${actions.length ? actions.map(renderRuntimeAction).join('') : '<div class="text-sm text-gray-500">暂无处置建议。</div>'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderRoutingSummary(modelConfig, dashboard) {
+            const value = modelConfig?.value || {};
+            const cm = dashboard?.continuation_metrics || {};
+            const kg = dashboard?.kg_ops || {};
+            const routeMetrics = dashboard?.llm_route_metrics || {};
+            const windowHits = routeMetrics.window_hit_counts || {};
+            const primaryModel = value.openai_model || 'primary';
+            const backupModel = value.backup_openai_model || 'backup';
+            const primaryHits = Object.entries(windowHits).filter(([k]) => k.endsWith(`:${primaryModel}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0);
+            const backupHits = Object.entries(windowHits).filter(([k]) => k.endsWith(`:${backupModel}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0);
+            const totalHits = primaryHits + backupHits;
+            const primaryPct = totalHits ? Math.round((primaryHits / totalHits) * 100) : 0;
+            const backupPct = totalHits ? Math.round((backupHits / totalHits) * 100) : 0;
+            const renderMetricMap = (title, data) => {
+                const entries = Object.entries(data || {});
+                if (!entries.length) {
+                    return `<div class="text-sm text-gray-500">${title}: 暂无样本</div>`;
+                }
+                return `
+                    <div>
+                        <div class="text-sm font-semibold text-gray-800 mb-2">${title}</div>
+                        <div class="flex flex-wrap gap-2">
+                            ${entries.map(([k, v]) => `<span class="px-2 py-1 rounded-full text-xs border border-gray-200 bg-white text-gray-700">${escapeHtml(k)}: ${escapeHtml(String(v))}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            };
+            return `
+                <div class="space-y-4">
+                    <h3 class="text-base font-bold text-gray-800">Model Routing & Ops Summary</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Primary Chat</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.openai_model || '—')}</div></div>
+                        <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Primary Summary</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.summary_model || '—')}</div></div>
+                        <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Backup Chat</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.backup_openai_model || '—')}</div></div>
+                        <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Backup Summary</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.backup_summary_model || '—')}</div></div>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Routing Mode</div><div class="font-semibold text-gray-900">${escapeHtml(value.llm_routing_mode || 'fallback')}</div></div>
+                    <div class="rounded-lg border border-gray-200 bg-white p-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="text-xs text-gray-500">1h Route Share</div>
+                            <div class="text-[11px] text-gray-400">最近 1 小时命中占比</div>
+                        </div>
+                        <div class="mt-3 space-y-3">
+                            <div>
+                                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                    <span class="font-medium text-indigo-700">${escapeHtml(primaryModel)}</span>
+                                    <span>${escapeHtml(String(primaryPct))}% · ${escapeHtml(String(primaryHits))}</span>
+                                </div>
+                                <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full bg-indigo-500 rounded-full" style="width:${Math.max(primaryPct, totalHits ? 6 : 0)}%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                    <span class="font-medium text-emerald-700">${escapeHtml(backupModel)}</span>
+                                    <span>${escapeHtml(String(backupPct))}% · ${escapeHtml(String(backupHits))}</span>
+                                </div>
+                                <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full bg-emerald-500 rounded-full" style="width:${Math.max(backupPct, totalHits ? 6 : 0)}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Continuation Pending</div><div class="text-xl font-bold text-gray-900">${escapeHtml(String(cm.pending ?? 0))}</div></div>
+                        <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">KG Queue Ready</div><div class="text-xl font-bold text-gray-900">${escapeHtml(String(kg.queue_ready_total || 0))}</div></div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3">
+                        ${renderMetricMap('LLM Route Hit (1h)', routeMetrics.window_hit_counts || routeMetrics.hit_counts)}
+                        ${renderMetricMap('LLM Route Fail (1h)', routeMetrics.window_fail_counts || routeMetrics.fail_counts)}
+                        ${renderMetricMap('LLM Route Fallback (1h)', routeMetrics.window_fallback_counts || routeMetrics.fallback_counts)}
+                        ${renderMetricMap('LLM Route Circuit Open (1h)', routeMetrics.window_circuit_open_counts || routeMetrics.circuit_open_counts)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderOperationHistoryInline(items) {
+            const list = Array.isArray(items) ? items.slice(0, 6) : [];
+            if (!list.length) return '<div class="text-sm text-gray-500">暂无操作历史。</div>';
+            return `
+                <div class="space-y-3">
+                    <h3 class="text-base font-bold text-gray-800">Operation History</h3>
+                    ${list.map((item) => `
+                        <div class="rounded-lg border border-gray-200 bg-white p-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="font-semibold text-gray-800">${escapeHtml(item.action || 'unknown')}</div>
+                                <div class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">${escapeHtml(item.status || 'unknown')}</div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-2">${escapeHtml(item.created_at || '')}</div>
+                            <div class="text-sm text-gray-700 mt-2">${escapeHtml(item.message || '—')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderHomeOverview(data, modelConfig) {
+            document.getElementById('home-overview-meta').textContent = `dashboard=${formatTimestamp(new Date(data.generated_at))} · overall=${data.overall_status}`;
+            document.getElementById('ai-ops-advice-panel').innerHTML = renderAiOpsAdvice(data.ai_ops_advice || {});
+            document.getElementById('opencode-runtime-panel').innerHTML = renderOpencodeRuntime(data.opencode_runtime || {});
+            document.getElementById('routing-summary-panel').innerHTML = renderRoutingSummary(modelConfig, data);
+            document.getElementById('operation-history-panel-inline').innerHTML = renderOperationHistoryInline(data.operation_history || []);
+        }
+
+        async function loadHomeOverview() {
+            const button = document.getElementById('refresh-home-overview');
+            if (button) button.disabled = true;
+            try {
+                const [dashboardResp, modelResp] = await Promise.all([
+                    fetch(API_URL),
+                    fetch(`${API_BASE}/api/v1/admin/config/model`),
+                ]);
+                if (!dashboardResp.ok) throw new Error(`dashboard ${dashboardResp.status}`);
+                if (!modelResp.ok) throw new Error(`model config ${modelResp.status}`);
+                const dashboard = await dashboardResp.json();
+                const modelConfig = await modelResp.json();
+                renderHomeOverview(dashboard, modelConfig);
+            } catch (e) {
+                document.getElementById('home-overview-meta').textContent = `首页总览加载失败: ${e.message}`;
+            } finally {
+                if (button) button.disabled = false;
+            }
+        }
+
+        function renderSharedMemoryMetrics(sm) {
+            const sharedMemory = sm || {};
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">跨会话共享 (Shared Memory)</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><p class="text-xs text-gray-500">项目会话数</p><p class="text-xl font-bold">${sharedMemory.project_session_count || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">去重项目数</p><p class="text-xl font-bold">${sharedMemory.distinct_project_count || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">摘要共享源</p><p class="text-xl font-bold">${sharedMemory.summary_sources || 0}</p></div>
+                    <div><p class="text-xs text-gray-500">KG实体共享源</p><p class="text-xl font-bold">${sharedMemory.kg_entity_sources || 0}</p></div>
+                </div>
+                ${renderSharedMemoryProjectSamples(sharedMemory.project_samples)}
+            </div>`;
+        }
+
+        async function fetchData() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+
+                if (Array.isArray(data.operation_history)) {
+                    hydrateOpsHistoryFromApi(data.operation_history);
+                }
+
+                const timeStr = new Date(data.generated_at).toLocaleString();
+                document.getElementById('last-updated').textContent = `最后更新: ${timeStr}`;
+
+                const overallEl = document.getElementById('overall-status');
+                overallEl.textContent = data.overall_status;
+                overallEl.className = `px-4 py-2 rounded-full font-bold text-sm uppercase tracking-wider ${getStatusColorClass(data.overall_status).split(' ')[0]} bg-white border ${getStatusColorClass(data.overall_status).split(' ')[1]}`;
+
+                const gridHtml = [
+                    renderCard("Health（健康）", data.health, `<div class="text-sm mt-2 text-gray-600">DB Sessions（数据库会话）: <b>${data.health.db_counts?.sessions || 0}</b></div>`),
+                    renderCard("Continuation（续跑）", data.continuation, `<div class="text-sm mt-2 text-gray-600 truncate" title="${data.continuation.source_session_id}">Latest（最近）: <b>${(data.continuation.source_session_id || 'none').split('_').pop().substring(0, 8)}</b></div>`),
+                    renderCard("KG Extraction（KG 抽取）", data.kg, `<div class="text-sm mt-2 text-gray-600">Success（成功）: <b class="text-green-600">${data.kg.kg_success || 0}</b> / 429（限流）: <b class="text-yellow-600">${data.kg.kg_fail_429 || 0}</b></div>`),
+                    renderCard("Alerts（告警）", data.alerts, `<div class="text-sm mt-2 text-gray-600">Checks（检查项）: <b>${data.alerts.checks_evaluated || 0}</b></div>`),
+                    renderCard("KG Jobs（KG 任务）", {status: (data.kg_ops?.queue_ready_total || data.kg_ops?.queue_retry_wait_total || data.kg_ops?.deadletter_total) ? 'warning' : 'ok', issues: []}, `<div class="text-sm mt-2 text-gray-600">Queue Ready（可立即处理）: <b>${data.kg_ops?.queue_ready_total || 0}</b> / Queue Retry Wait（待重试）: <b class="text-amber-600">${data.kg_ops?.queue_retry_wait_total || 0}</b> / Deadletter（死信）: <b class="text-red-600">${data.kg_ops?.deadletter_total || 0}</b></div>`),
+                ].join('');
+                document.getElementById('cards-grid').innerHTML = gridHtml;
+
+                document.getElementById('issues-list').innerHTML = renderIssues(data);
+                document.getElementById('metrics-grid').innerHTML = renderCapacityMetrics(data.capacity_snapshot) + renderSharedMemoryMetrics(data.shared_memory);
+                document.getElementById('ops-grid').innerHTML = renderKGOpsMetrics(data.kg_ops) + renderOpsActions();
+                bindOpsActionButtons();
+                document.getElementById('continuation-ops-grid').innerHTML = renderContinuationOps(data.continuation, data.continuation_ops || {}) + renderContinuationMetricsCard(data.continuation_metrics || {});
+                loadHomeOverview();
+            } catch (e) {
+                console.error(e);
+                document.getElementById('last-updated').textContent = `更新失败: ${e.message}`;
+                document.getElementById('cards-grid').innerHTML = `<div class="col-span-full p-4 bg-red-50 text-red-600 rounded">获取数据失败，请检查网络或控制台。</div>`;
+            }
+        }
+
+        updateOpsFeedback();
+        renderOpsHistory();
+        fetchData();
+        loadModelConfig();
+        loadHomeOverview();
+        document.getElementById("save-model-config")?.addEventListener("click", saveModelConfig);
+        document.getElementById("refresh-home-overview")?.addEventListener("click", loadHomeOverview);
+        setInterval(fetchData, 30000);
+    </script>
+</body>
+</html>
