@@ -25,7 +25,7 @@ PLUGIN_CONT = BASE_PLUGIN / 'plugin-auto-continuation.json'
 DESKTOP_LOGS = BASE_DESKTOP / 'logs'
 CLI_LOG_DIR = BASE_OPENCODE / 'log'
 
-MODE = os.environ.get('OPENCODE_MONITOR_MODE', 'local')
+MODE = os.environ.get("OPENCODE_MONITOR_MODE", "local")
 SSH_HOST = os.environ.get('OPENCODE_MONITOR_HOST', '10.100.1.18')
 SSH_USER = os.environ.get('OPENCODE_MONITOR_USER', 'jimwong')
 SSH_PASS = os.environ.get('OPENCODE_MONITOR_PASSWORD', '')
@@ -43,7 +43,7 @@ def iso_now() -> str:
 def run_remote_python(script: str) -> str:
     if MODE != 'ssh':
         raise RuntimeError('remote helper called in local mode')
-    base = ['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=8', f'{SSH_USER}@{SSH_HOST}', 'python3', '-c', script]
+    base = ['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=8', f'{SSH_USER}@{SSH_HOST}', f'python3 -c {shlex.quote(script)}']
     if SSH_PASS:
         if shutil.which('sshpass') is None:
             raise RuntimeError('sshpass unavailable for password-based ssh mode')

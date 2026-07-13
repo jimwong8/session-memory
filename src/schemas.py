@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class MessageCreate(BaseModel):
@@ -70,14 +70,14 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    session_id: uuid.UUID
+    """聊天回复，含记忆注入可见性"""
+    session_id: str
     reply: str
-    tokens_used: int
-    context_messages_count: int
-    summary_included: bool
-    retrieved_count: int
-
-
+    tokens_used: int = 0
+    context_messages_count: int = 0
+    summary_included: bool = False
+    memory_injected: bool = False
+    retrieved_count: int = 0
 class ContextWindow(BaseModel):
     system_prompt: str | None = None
     summary: str | None = None
@@ -86,6 +86,7 @@ class ContextWindow(BaseModel):
     recent_messages: list[MessageResponse] = []
     graph_context: str | None = None
     shared_graph_context: str | None = None
+    memory_context: str | None = None
     total_tokens: int = 0
     budget_state: str = "normal"
     budget_ratio: float = 0.0
@@ -127,6 +128,8 @@ class ContextStats(BaseModel):
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(3, ge=1, le=20)
+    limit: int = Field(default=10, ge=1, le=50)
+    strategy: str = Field(default="hybrid", pattern=r"^(keyword|vector|hybrid)$")
 
 
 class SearchResponse(BaseModel):
@@ -471,7 +474,8 @@ class AdminDashboardResponse(BaseModel):
     operation_history: list[OperationHistoryItem] = []
     ai_ops_advice: AIOpsAdviceSummary
     opencode_runtime: OpenCodeRuntimeAuditSummary
-
+    bridge: dict = {}
+    raw_events: dict = {}
 
 class GlobalModelConfig(BaseModel):
     openai_model: str
@@ -483,3 +487,116 @@ class GlobalModelConfig(BaseModel):
 
 class GlobalModelConfigResponse(BaseModel):
     value: GlobalModelConfig
+
+# ── 金字塔 L0-L3 记忆 ──
+
+class MemoryAtomCreate(BaseModel):
+    """创建记忆原子的请求"""
+    session_id: str
+    kind: str = Field(
+        default="fact",
+        pattern=r"^(preference|decision|fact|constraint|goal|error_pattern|task_state|blocker)$",
+    )
+    title: str | None = None
+    content: str = Field(..., min_length=1)
+    tags: list[str] = []
+    source_message_ids: list[str] = []
+    confidence_score: float = 0.8
+    sensitivity_level: str = Field(
+        default="normal",
+        pattern=r"^(normal|high)$",
+    )
+
+
+class MemoryAtomResponse(BaseModel):
+    """记忆原子响应"""
+    id: str
+    session_id: str
+    user_id: str
+    project_key: str | None = None
+    kind: str
+    title: str | None = None
+    content: str
+    tags: list[str] = []
+    source_message_ids: list[str] = []
+
+    @field_validator("id", "session_id", "source_message_ids", mode="before")
+    @classmethod
+    def _stringify_uuids(cls, v):
+        import uuid as _uuid
+        if isinstance(v, _uuid.UUID):
+            return str(v)
+        if isinstance(v, list):
+            return [str(x) if isinstance(x, _uuid.UUID) else x for x in v]
+        return v
+    confidence_score: float | None = None
+    sensitivity_level: str = "normal"
+    dedup_signature: str | None = None
+    superseded_by: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MemoryScenarioResponse(BaseModel):
+    """场景块响应"""
+    id: str
+    user_id: str
+    project_key: str | None = None
+    title: str
+    narrative_md: str
+    atom_ids: list[str] = []
+    session_ids: list[str] = []
+    period_start: datetime | None = None
+    period_end: datetime | None = None
+    created_at: datetime
+
+    @field_validator("id", "atom_ids", "session_ids", mode="before")
+    @classmethod
+    def _stringify_uuids(cls, v):
+        import uuid as _uuid
+        if isinstance(v, _uuid.UUID):
+            return str(v)
+        if isinstance(v, list):
+            return [str(x) if isinstance(x, _uuid.UUID) else x for x in v]
+        return v
+
+    model_config = {"from_attributes": True}
+
+
+class PersonaResponse(BaseModel):
+    """用户画像响应"""
+    user_id: str
+    profile_md: str = ""
+    preferences_json: dict = {}
+    scenario_ids: list[str] = []
+    version: int = 1
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("scenario_ids", mode="before")
+    @classmethod
+    def _stringify_uuids(cls, v):
+        import uuid as _uuid
+        if isinstance(v, list):
+            return [str(x) if isinstance(x, _uuid.UUID) else x for x in v]
+        return v
+
+    model_config = {"from_attributes": True}
+
+
+class PersonaUpdateRequest(BaseModel):
+    """更新用户画像请求"""
+    profile_md: str | None = None
+    preferences_json: dict | None = None
+
+
+class CanvasUpdateRequest(BaseModel):
+    """更新 Mermaid 画布请求"""
+    canvas_mermaid: str | None = None
+
+
+class CanvasResponse(BaseModel):
+    """Mermaid 画布响应"""
+    session_id: str
+    canvas_mermaid: str | None = None

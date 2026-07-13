@@ -31,3 +31,13 @@ Thumbs.db
 
 # Docker
 .docker/
+
+# Runtime data (never backup)
+data/
+logs/
+backups/
+*.bak
+*.bak-*
+__pycache__/
+.cron/
+*.pyc

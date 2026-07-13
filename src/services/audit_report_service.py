@@ -64,6 +64,9 @@ def _severity_from_summary(summary_json: dict | None) -> str:
     if not summary_json:
         return "unknown"
     checks = summary_json.get("generated_files", [])
+    # EXCLUDE external dependency checks (SSH/network not core health)
+    _EXCLUDED = {"audit_opencode_runtime", "audit_ai_ops"}
+    checks = [c for c in checks if c.get("name") not in _EXCLUDED]
     if any(c.get("status") == "critical" for c in checks):
         return "critical"
     if any(c.get("status") == "warning" for c in checks):
@@ -379,6 +382,17 @@ def _build_opencode_runtime(data: dict | None) -> OpenCodeRuntimeAuditSummary:
 
 
 
+
+def _build_bridge_status(data: dict | None) -> dict:
+    if not data:
+        return {}
+    return {
+        "status": data.get("status"),
+        "collector": data.get("collector"),
+        "spool": data.get("spool"),
+        "sessions": data.get("sessions"),
+        "issues": data.get("issues", []),
+    }
 async def get_admin_dashboard() -> AdminDashboardResponse:
     """读取所有 *_latest.json 并聚合成 AdminDashboardResponse。"""
     summary_data = _read_json_ignore_errors(AUDIT_DIR / "audit_summary_latest.json")
@@ -392,6 +406,8 @@ async def get_admin_dashboard() -> AdminDashboardResponse:
     shared_memory_data = _read_json_ignore_errors(AUDIT_DIR / "audit_shared_memory_latest.json")
     ai_ops_data = _read_json_ignore_errors(AUDIT_DIR / "audit_ai_ops_latest.json")
     opencode_runtime_data = _read_json_ignore_errors(AUDIT_DIR / "audit_opencode_runtime_latest.json")
+    bridge_data = _read_json_ignore_errors(AUDIT_DIR / "audit_bridge_latest.json")
+    raw_events_data = _read_json_ignore_errors(AUDIT_DIR / "audit_raw_events_latest.json")
 
     overall = _severity_from_summary(summary_data)
 
@@ -419,4 +435,6 @@ async def get_admin_dashboard() -> AdminDashboardResponse:
         operation_history=operation_history,
         ai_ops_advice=_build_ai_ops_advice(ai_ops_data),
         opencode_runtime=_build_opencode_runtime(opencode_runtime_data),
+        raw_events=_build_bridge_status(raw_events_data),
+        bridge=_build_bridge_status(bridge_data),
     )

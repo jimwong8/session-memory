@@ -124,18 +124,32 @@ class SessionService:
         SESSIONS_TOTAL.inc()
         return session
 
-    async def get_session(self, session_id: uuid.UUID) -> Session | None:
-        """获取会话（含消息和摘要）"""
-        stmt = (
-            select(Session)
-            .where(Session.id == session_id)
-            .options(
-                selectinload(Session.messages),
-                selectinload(Session.summaries),
-            )
+    async def get_session(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        message_limit: int = 50,
+    ) -> tuple[Session, list[Message]]:
+        """获取会话基本信息及分页消息（而非全量加载）"""
+        from fastapi import HTTPException
+        # 加载会话基本信息
+        stmt = select(Session).where(Session.id == session_id)
+        result = await db.execute(stmt)
+        session = result.scalar_one_or_none()
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        
+        # 分页加载消息（而非全量 selectinload）
+        msg_stmt = (
+            select(Message)
+            .where(Message.session_id == session_id)
+            .order_by(Message.created_at.desc())
+            .limit(message_limit)
         )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        msg_result = await db.execute(msg_stmt)
+        messages = list(msg_result.scalars().all())
+        
+        return session, messages
 
     async def list_sessions(self, user_id: str, limit: int = 20, offset: int = 0) -> list[Session]:
         """列出用户的会话"""
@@ -305,6 +319,8 @@ class SessionService:
                     content=m.content,
                     tokens=m.tokens,
                     created_at=m.created_at,
+                    metadata_json=m.metadata_json,
+                    embedding=None,
                 )
                 for m in cached
             ]
@@ -369,4 +385,3 @@ class SessionService:
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
-

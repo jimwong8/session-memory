@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Session Memory Dashboard v2 v2</title>
+    <title>Session Memory Dashboard v2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .status-ok {
@@ -194,7 +194,7 @@
     </div>
 
     <script>
-        const API_BASE = "http://10.100.1.13:8000";
+        const API_BASE = "";
         const API_URL = `${API_BASE}/api/v1/admin/dashboard`;
         const OPS_HISTORY_LIMIT = 10;
         const opsFeedbackState = {
@@ -753,12 +753,12 @@
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">Ops Actions（运维操作）</h3>
                 <div class="flex flex-wrap gap-3">
-                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters', 'Requeue Deadletters（重入死信）', 'bg-yellow-500 hover:bg-yellow-600')}
-                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters?reason=json_extract_failed', 'Requeue JSON Failures（重试 JSON 失败）', 'bg-orange-500 hover:bg-orange-600')}
-                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters?reason=rate_limited_upstream', 'Requeue Rate Limited（重试限流任务）', 'bg-amber-500 hover:bg-amber-600')}
-                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/requeue-kg-deadletters?reason=extract_exception', 'Requeue Exceptions（重试异常任务）', 'bg-rose-500 hover:bg-rose-600')}
-                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/run-kg-worker-once', 'Run KG Worker Once（执行一次 KG Worker）', 'bg-blue-600 hover:bg-blue-700')}
-                    ${renderOpsButton('http://10.100.1.13:8000/api/v1/admin/ops/reconcile-continuation-metrics', 'Reconcile Continuation Metrics（校准续跑指标）', 'bg-emerald-600 hover:bg-emerald-700')}
+                    ${renderOpsButton('/api/v1/admin/ops/requeue-kg-deadletters', 'Requeue Deadletters（重入死信）', 'bg-yellow-500 hover:bg-yellow-600')}
+                    ${renderOpsButton('/api/v1/admin/ops/requeue-kg-deadletters?reason=json_extract_failed', 'Requeue JSON Failures（重试 JSON 失败）', 'bg-orange-500 hover:bg-orange-600')}
+                    ${renderOpsButton('/api/v1/admin/ops/requeue-kg-deadletters?reason=rate_limited_upstream', 'Requeue Rate Limited（重试限流任务）', 'bg-amber-500 hover:bg-amber-600')}
+                    ${renderOpsButton('/api/v1/admin/ops/requeue-kg-deadletters?reason=extract_exception', 'Requeue Exceptions（重试异常任务）', 'bg-rose-500 hover:bg-rose-600')}
+                    ${renderOpsButton('/api/v1/admin/ops/run-kg-worker-once', 'Run KG Worker Once（执行一次 KG Worker）', 'bg-blue-600 hover:bg-blue-700')}
+                    ${renderOpsButton('/api/v1/admin/ops/reconcile-continuation-metrics', 'Reconcile Continuation Metrics（校准续跑指标）', 'bg-emerald-600 hover:bg-emerald-700')}
                 </div>
             </div>`;
         }
@@ -1027,7 +1027,7 @@
                             <div class="text-sm font-semibold text-gray-800">Manual Investigate Queue</div>
                             <div class="text-xs text-gray-400">需人工接管的会话</div>
                         </div>
-                        <div class="grid grid-cols-1 gap-3">${manualQueue.length ? manualQueue.map((item) => `<div class="rounded-lg border border-rose-200 bg-rose-50 p-3 shadow-sm"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="font-mono text-sm text-rose-900 break-all">${escapeHtml(item.session_id || 'unknown')}</div><div class="text-xs text-rose-600 mt-1">count=${escapeHtml(String(item.count || 0))}</div></div><div class="text-xs px-2 py-1 rounded-full border border-rose-200 bg-white text-rose-700">manual_investigate</div></div><div class="text-sm text-rose-800 mt-3 leading-6">${escapeHtml(item.reason || '—')}</div><div class="flex flex-wrap gap-2 mt-3"><button data-ops-button="true" data-ops-url="${escapeHtml(`http://10.100.1.13:8000/api/v1/admin/ops/repair-stuck-session?session_id=${encodeURIComponent(item.session_id || '')}`)}" class="px-3 py-1.5 rounded bg-white border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-100">Preview Repair</button><button data-ops-button="true" data-ops-url="${escapeHtml(`http://10.100.1.13:8000/api/v1/admin/ops/repair-stuck-session?session_id=${encodeURIComponent(item.session_id || '')}&apply=true`)}" class="px-3 py-1.5 rounded bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700">Apply Candidate</button></div></div>`).join('') : '<div class="text-sm text-gray-500">暂无需要人工接管的会话。</div>'}</div>
+                        <div class="grid grid-cols-1 gap-3">${manualQueue.length ? manualQueue.map((item) => `<div class="rounded-lg border border-rose-200 bg-rose-50 p-3 shadow-sm"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="font-mono text-sm text-rose-900 break-all">${escapeHtml(item.session_id || 'unknown')}</div><div class="text-xs text-rose-600 mt-1">count=${escapeHtml(String(item.count || 0))}</div></div><div class="text-xs px-2 py-1 rounded-full border border-rose-200 bg-white text-rose-700">manual_investigate</div></div><div class="text-sm text-rose-800 mt-3 leading-6">${escapeHtml(item.reason || '—')}</div><div class="flex flex-wrap gap-2 mt-3"><button data-ops-button="true" data-ops-url="${escapeHtml(`/api/v1/admin/ops/repair-stuck-session?session_id=${encodeURIComponent(item.session_id || '')}`)}" class="px-3 py-1.5 rounded bg-white border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-100">Preview Repair</button><button data-ops-button="true" data-ops-url="${escapeHtml(`/api/v1/admin/ops/repair-stuck-session?session_id=${encodeURIComponent(item.session_id || '')}&apply=true`)}" class="px-3 py-1.5 rounded bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700">Apply Candidate</button></div></div>`).join('') : '<div class="text-sm text-gray-500">暂无需要人工接管的会话。</div>'}</div>
                     </div>
                     <div>
                         <div class="flex items-center justify-between gap-3 mb-2">

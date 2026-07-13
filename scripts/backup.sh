@@ -27,4 +27,13 @@ echo "$LOG_PREFIX Redis 备份完成: $REDIS_BACKUP"
 find "$BACKUP_DIR" -name postgres_*.sql.gz -mtime +30 -delete
 find "$BACKUP_DIR" -name redis_*.rdb -mtime +30 -delete
 echo "$LOG_PREFIX 旧备份清理完成"
+MEMORY_BACKUP="$BACKUP_DIR/memory_${TIMESTAMP}.tar.gz"
+tar -czf "$MEMORY_BACKUP" -C "$PROJECT_DIR/data" memory 2>/dev/null || echo "$LOG_PREFIX memory backup skipped"
+echo "$LOG_PREFIX Memory markdown backup complete"
+
+# Collector spool backup
+COLLECTOR_SPOOL_BACKUP="$BACKUP_DIR/collector_spool_${TIMESTAMP}.tar.gz"
+tar -czf "$COLLECTOR_SPOOL_BACKUP" -C "$PROJECT_DIR/data" collector-spool collector-spool-archive 2>/dev/null || echo "$LOG_PREFIX collector-spool backup skipped"
+echo "$LOG_PREFIX Collector spool backup: $COLLECTOR_SPOOL_BACKUP"
+
 echo "$LOG_PREFIX 备份完成"

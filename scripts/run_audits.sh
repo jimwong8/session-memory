@@ -30,6 +30,8 @@ run_one() {
   fi
 }
 
+run_one audit_bridge.py
+run_one audit_raw_events.py
 write_summary() {
 python3 - <<'PY'
 from pathlib import Path
@@ -94,9 +96,13 @@ run_one audit_trends.py
 run_one audit_capacity.py
 run_one audit_shared_memory.py
 run_one audit_opencode_runtime.py
+run_one audit_bridge.py
+run_one audit_raw_events.py
 write_summary >/dev/null
 run_one audit_alerts.py
 run_one audit_ai_ops.py
+run_one audit_bridge.py
+run_one audit_raw_events.py
 write_summary
 python3 "$SCRIPT_DIR/build_alert_payload.py" >/dev/null
 python3 "$SCRIPT_DIR/send_alert_webhook.py" >/dev/null || true

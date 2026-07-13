@@ -1,15 +1,19 @@
 """数据库连接和会话管理"""
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import event
 
 from src.config import settings
 
 engine = create_async_engine(
     settings.database_url,
     echo=settings.database_echo,
+    pool_size=20,
+    max_overflow=40,
+    pool_timeout=30,
+    pool_recycle=1800,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_reset_on_return="rollback",
 )
 
 async_session = async_sessionmaker(
@@ -17,6 +21,21 @@ async_session = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Nothing extra — just ensure clean state."""
+    pass
+
+
+@event.listens_for(engine.sync_engine, "reset")
+def _reset_connection(dbapi_connection, connection_record):
+    """Rollback any aborted transaction when connection is returned to pool."""
+    try:
+        dbapi_connection.rollback()
+    except Exception:
+        pass
 
 
 async def get_db() -> AsyncSession:  # type: ignore[misc]

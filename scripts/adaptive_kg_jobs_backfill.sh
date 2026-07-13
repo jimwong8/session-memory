@@ -8,15 +8,7 @@ if ! flock -n 9; then
   exit 0
 fi
 
-SUDO_PASSWORD="${SUDO_PASSWORD:-}"
 
-sudocmd() {
-  if [[ -n "$SUDO_PASSWORD" ]]; then
-    printf '%s\n' "$SUDO_PASSWORD" | sudo -S "$@"
-  else
-    sudo "$@"
-  fi
-}
 
 WORKER=(/opt/conda/bin/python /app/scripts/backfill_kg_jobs.py --apply)
 BATCH_SIZE="${BATCH_SIZE:-40}"
@@ -34,7 +26,7 @@ log() {
 }
 
 run_sql() {
-  sudocmd docker exec session_memory_postgres psql -U postgres -d session_memory -t -A -F '|' -c "$1"
+  docker exec session_memory_postgres psql -U postgres -d session_memory -t -A -F '|' -c "$1"
 }
 
 queue_snapshot() {
@@ -51,14 +43,14 @@ count_ready_pending() {
 
 cleanup_stale_workers() {
   local pids
-  pids=$(sudocmd docker exec session_memory_api bash -lc "ps -ef | grep backfill_kg_jobs.py | grep -v grep | awk '{print \$2}' | xargs" || true)
+  pids=$(docker exec session_memory_api bash -lc "ps -ef | grep backfill_kg_jobs.py | grep -v grep | awk '{print \$2}' | xargs" || true)
   if [[ -n "${pids// }" ]]; then
     log "发现遗留 worker 进程: $pids，执行清理"
-    sudocmd docker exec session_memory_api bash -lc "kill $pids || true"
+    docker exec session_memory_api bash -lc "kill $pids || true"
     sleep 2
-    pids=$(sudocmd docker exec session_memory_api bash -lc "ps -ef | grep backfill_kg_jobs.py | grep -v grep | awk '{print \$2}' | xargs" || true)
+    pids=$(docker exec session_memory_api bash -lc "ps -ef | grep backfill_kg_jobs.py | grep -v grep | awk '{print \$2}' | xargs" || true)
     if [[ -n "${pids// }" ]]; then
-      sudocmd docker exec session_memory_api bash -lc "kill -9 $pids || true"
+      docker exec session_memory_api bash -lc "kill -9 $pids || true"
     fi
   fi
   local running
@@ -115,7 +107,7 @@ main() {
       cleanup_stale_workers
     fi
 
-    output=$(sudocmd docker exec session_memory_api "${WORKER[@]}" --batch-size "$BATCH_SIZE" --sleep-seconds "$SLEEP_SECONDS" 2>&1 || true)
+    output=$(docker exec session_memory_api "${WORKER[@]}" --batch-size "$BATCH_SIZE" --sleep-seconds "$SLEEP_SECONDS" 2>&1 || true)
     printf '%s\n' "$output"
 
     after_running=$(count_running_locks)

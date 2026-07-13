@@ -1,4 +1,5 @@
 import asyncio
+import os
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from src.cache import cache
 from src.config import settings
 from src.embedding_service import create_embedding, warmup_embedding
 from src.routes import router
+from src.routes_proactive import router as proactive_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +40,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("正在连接 Redis...")
     await cache.connect()
-    if settings.embedding_provider == "local":
+    if settings.embedding_provider == "local" and os.environ.get("ENABLE_EMBEDDING_WARMUP", "true").lower() == "true":
         try:
             logger.info("正在预热本地嵌入模型...")
             await warmup_embedding()
@@ -62,7 +64,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://10.100.1.13:8000",
+        "http://localhost:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,6 +90,7 @@ async def metrics_middleware(request: Request, call_next):
         REQUEST_DURATION.labels(method=method, endpoint=endpoint).observe(duration)
 
 app.include_router(router)
+app.include_router(proactive_router)
 
 @app.get("/", include_in_schema=False)
 async def ui_index():

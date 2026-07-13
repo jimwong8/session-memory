@@ -1,8 +1,6 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: session-memory-api
     container_name: session_memory_api
     ports:
       - 8000:8000
@@ -17,6 +15,9 @@ services:
       - ./src:/app/src
       - ./scripts:/app/scripts
       - ./logs:/app/logs
+      - ./data/memory:/app/data/memory
+      - ./data/hf_cache:/app/data/hf_cache
+      - ./data/collector-spool:/app/data/collector-spool
     restart: unless-stopped
     healthcheck:
       test: [CMD, curl, -f, http://localhost:8000/health]
@@ -34,6 +35,33 @@ services:
           memory: 512M
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2
 
+
+  backfill:
+    image: session-memory-api
+    container_name: session_memory_backfill
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - BACKFILL_MAX=220000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./logs:/app/logs
+    restart: "no"
+    command: python /app/scripts/backfill_embeddings.py
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
   postgres:
     image: pgvector/pgvector:pg16
     container_name: session_memory_postgres

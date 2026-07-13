@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.metrics import CONTEXT_BUDGET_RATIO, CONTEXT_BUDGET_STATE, CONTEXT_WINDOW_TOKENS
 from src.models import KGEntity, Session, Summary
+from src.services.recall import recall_for_context
 from src.schemas import ContextWindow, MessageResponse
 from src.services.knowledge_graph import KnowledgeGraphService
 from src.services.session_service import SessionService
@@ -68,6 +69,48 @@ class ContextBuilder:
                 ctx.summary = summary.content
                 ctx.summary_tokens = summary_tokens
                 budget -= summary_tokens
+
+        # 注入跨会话记忆原子（L1 atoms）
+        try:
+            from datetime import datetime, timezone
+            from src.models import MemoryAtom
+            from src.services.recall import recall_for_context
+            user_id = None
+            if session_obj:
+                user_id = session_obj.user_id
+            if user_id and budget > 500:
+                memory_hits = await recall_for_context(
+                    self.db, user_message, user_id=user_id, limit=5
+                )
+                atom_ids = [h.id for h in memory_hits if h.table == "memory_atoms"]
+                if atom_ids:
+                    atom_stmt = (
+                        select(MemoryAtom)
+                        .where(MemoryAtom.id.in_(atom_ids))
+                        .order_by(MemoryAtom.confidence_score.desc())
+                    )
+                    atoms = list((await self.db.execute(atom_stmt)).scalars().all())
+                    if atoms:
+                        atom_lines = []
+                        now = datetime.now(timezone.utc)
+                        for a in atoms[:5]:
+                            # 记忆衰减：7天内新鲜，30天内可接受，超过30天跳过
+                            if a.created_at:
+                                age_days = (now - a.created_at).days
+                                if age_days > 30:
+                                    continue
+                                age_tag = "" if age_days <= 7 else f" (~{age_days}d ago)"
+                            else:
+                                age_tag = ""
+                            tag_str = f" [{', '.join(a.tags)}]" if a.tags else ""
+                            atom_lines.append(f"[{a.kind}{tag_str}{age_tag}] {a.content}"[:300])
+                        memory_context = "\n".join(atom_lines)
+                        memory_tokens = count_tokens(memory_context) + 4
+                        if memory_tokens < budget * 0.2:
+                            ctx.memory_context = memory_context
+                            budget -= memory_tokens
+        except Exception:
+            logger.warning("记忆原子注入失败，跳过", exc_info=True)
 
         if project_id:
             try:

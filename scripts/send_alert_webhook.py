@@ -21,10 +21,11 @@ def parse_args():
 
 def main():
     args = parse_args()
+    webhook = os.environ.get('ALERT_WEBHOOK_URL', '').strip()
+    if not webhook:
+        print('WARNING: ALERT_WEBHOOK_URL not configured. Alerts will not be sent.', file=sys.stderr)
     payload = json.loads(PAYLOAD_PATH.read_text(encoding='utf-8'))
     severity = payload.get('severity', 'unknown')
-    webhook = os.environ.get('ALERT_WEBHOOK_URL', '').strip()
-
     result = {
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'severity': severity,

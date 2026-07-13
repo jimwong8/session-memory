@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.llm_client import chat_completion
 from src.models import KGEntity, KGRelation, Message
+from src.services.kg_governance import filter_and_dedup_entities
 
 logger = logging.getLogger(__name__)
 _KG_RATE_LIMIT_UNTIL = 0.0
@@ -221,16 +222,67 @@ class KnowledgeGraphService:
         return list(result.scalars().all())
 
     async def search(self, query: str, session_id=None, top_k: int = 5):
-        entity_stmt = select(KGEntity).where(KGEntity.name.ilike(f"%{query}%"))
-        relation_stmt = select(KGRelation).where(KGRelation.relation_type.ilike(f"%{query}%"))
+        from sqlalchemy import text as sa_text, or_
+        entity_ids = []
+
+        # Detect Chinese characters (CJK range)
+        has_chinese = any('\u4e00' <= c <= '\u9fff' for c in query)
+
+        # Split at: whitespace, hyphen, underscore, slash, AND CJK/Latin boundaries
+        # e.g., "PVE虚拟机" → ["PVE", "虚拟机"], "配置-transparent" → ["配置", "transparent"]
+        query_spaced = re.sub(r'([\u4e00-\u9fff])([\w])', r'\1 \2', query)
+        query_spaced = re.sub(r'([\w])([\u4e00-\u9fff])', r'\1 \2', query_spaced)
+        words = [w.strip() for w in re.split(r'[\s\-_/]+', query_spaced) if w.strip() and len(w.strip()) > 1]
+        if not words:
+            words = [query.strip()] if query.strip() else [""]
+
+        # Strategy 1: Full-text search (English only — simple config does not tokenize Chinese)
+        if not has_chinese and words:
+            ts_query = words[0] if len(words) == 1 else " & ".join(words)
+            try:
+                ft_result = await self.db.execute(
+                    sa_text(
+                        "SELECT id FROM kg_entities WHERE name_tsv @@ to_tsquery(\'simple\', :q) "
+                        "ORDER BY ts_rank(name_tsv, to_tsquery(\'simple\', :q)) DESC LIMIT :lim"
+                    ).bindparams(q=ts_query, lim=top_k * 3)
+                )
+                entity_ids = [row[0] for row in ft_result.all()]
+            except Exception:
+                pass
+
+        entity_stmt = select(KGEntity)
+        relation_stmt = select(KGRelation)
+
+        if entity_ids:
+            # Use FTS results
+            entity_stmt = entity_stmt.where(KGEntity.id.in_(entity_ids))
+        elif len(words) <= 1:
+            # Single word: ILIKE substring (uses trigram GIN index)
+            search_term = words[0] if words else query.strip()
+            entity_stmt = entity_stmt.where(KGEntity.name.ilike(f"%{search_term}%"))
+        else:
+            # Multi-word (any language): match ANY word (OR semantics for broader recall)
+            entity_stmt = entity_stmt.where(
+                or_(*[KGEntity.name.ilike(f"%{w}%") for w in words])
+            )
+
         if session_id is not None:
             entity_stmt = entity_stmt.where(KGEntity.session_id == session_id)
             relation_stmt = relation_stmt.where(KGRelation.session_id == session_id)
-        entity_stmt = entity_stmt.order_by(KGEntity.created_at.desc()).limit(top_k)
-        relation_stmt = relation_stmt.order_by(KGRelation.created_at.desc()).limit(top_k)
+
+        entity_stmt = entity_stmt.limit(top_k)
+
+        # Relations: match by any word (OR semantics)
+        if words:
+            relation_stmt = relation_stmt.where(
+                or_(*[KGRelation.relation_type.ilike(f"%{w}%") for w in words])
+            )
+        relation_stmt = relation_stmt.limit(top_k)
+
         entity_result = await self.db.execute(entity_stmt)
         relation_result = await self.db.execute(relation_stmt)
         return list(entity_result.scalars().all()), list(relation_result.scalars().all())
+
 
     async def get_graph(self, session_id=None, limit: int = 80):
         entities = await self.list_entities(session_id=session_id, limit=limit)
@@ -289,6 +341,11 @@ class KnowledgeGraphService:
             relations = data.get("relations", []) or []
             if not entities and not relations:
                 return self._result(ok=True, noop=True, reason="empty_graph")
+
+            # Phase 4: Filter noise + dedup
+            entities = await filter_and_dedup_entities(self.db, entities, str(message.session_id))
+            if not entities and not relations:
+                return self._result(ok=True, noop=True, reason="all_filtered_noise")
 
             entity_map = {}
             entity_count = 0

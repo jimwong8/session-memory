@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Session Center App</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+  <style id="dark-mode-css">body.dark{background:#111;color:#e5e5e5;}body.dark .bg-white{background:#1a1a1a!important;}body.dark .bg-gray-50{background:#111!important;}body.dark .text-gray-800{color:#e5e5e5!important;}body.dark .text-gray-700{color:#ccc!important;}body.dark .text-gray-600{color:#aaa!important;}body.dark .text-gray-500{color:#888!important;}body.dark .border-gray-100,.border-gray-200{border-color:#333!important;}body.dark input,body.dark select,body.dark textarea{background:#1a1a1a!important;color:#ddd!important;border-color:#444!important;}body.dark .from-dashboard{background:#222!important;}body.dark .bg-indigo-50{background:#1e1b4b!important;}body.dark .bg-amber-50{background:#1c1917!important;}</style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen font-sans">
   <div class="max-w-7xl mx-auto p-6 space-y-6" data-app-shell="high-fusion">
@@ -14,7 +17,10 @@
         <h1 class="text-3xl font-bold text-gray-900 mt-3">Session Center App</h1>
         <p class="text-sm text-gray-500 mt-2">面向 central-session-server 能力映射的前端工作台第一版，先提供 Overview / Search / Resume / Sessions / Self-Check 骨架。</p>
       </div>
-      <div class="flex flex-wrap gap-3">
+      <div class="flex-1 max-w-xl">
+          <input id="global-search-input" type="text" placeholder="全局搜索 (Ctrl+K)" class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm bg-gray-50" autocomplete="off"/>
+        </div><div class="flex flex-wrap gap-3">
+        <button id="dark-toggle" class="px-2 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50" title="Toggle dark mode">DM</button>
         <a href="/" class="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-50">返回 Dashboard</a>
         <button id="refresh-self-check" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700">刷新自检</button>
       </div>
@@ -37,6 +43,9 @@
           <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#resume">Resume</a>
           <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#sessions">Sessions</a>
           <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#self-check">Self-Check</a>
+          <a class="rounded-lg border border-amber-200 bg-amber-50 text-amber-700 px-3 py-2 font-medium" href="#global-search">Global Search</a>
+          <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#kg-graph">KG Graph</a>
+          <a class="rounded-lg border border-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-50" href="#admin">Admin</a>
         </nav>
       </aside>
 
@@ -124,7 +133,71 @@
             <span id="self-check-badge" class="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-500">loading</span>
           </div>
           <div id="self-check-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+          <button id="selt-check-deeph" class="px-2 py-1 text-xs rounded bg-indigo-100 mb-2">Deep Health Check</button><span id="selt-check-result" class="text-xs text-gray-500 ml-2"></span>
           <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">边界提示：这里会明确展示 closeout 真实边界。当前静态基线仍为 P0-2 blocked、P1-2 caveated，不会被前端伪装成 passed。</div>
+        </section>
+<!-- Global Search -->
+        <section id="global-search" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <h2 class="text-xl font-semibold text-gray-900">Global Search</h2>
+          <div class="text-sm text-gray-500">跨会话混合检索 + 向量相似度 + 知识图谱实体 + BM25 关键词融合排序。</div>
+          <input id="global-search-query" type="text" placeholder="输入全局搜索词，例如: PVE GPU passthrough 配置" class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm"/>
+          <div class="flex flex-wrap gap-3">
+            <label><input type="radio" name="global-search-mode" value="hybrid" checked/> Hybrid</label>
+            <label><input type="radio" name="global-search-mode" value="query"/> KG 实体</label>
+            <label><input type="radio" name="global-search-mode" value="prefetch"/> 任务预取</label>
+            <select id="global-search-topk" class="rounded border px-2 py-1 text-sm"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option></select>
+            <button id="global-search-submit" class="px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700">搜索</button>
+          </div>
+          <div id="global-search-meta" class="text-xs text-gray-500"></div>
+          <div id="global-search-results" class="space-y-4"></div>
+        </section>
+<!-- KG Graph -->
+        <section id="kg-graph" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <h2 class="text-xl font-semibold text-gray-900">Knowledge Graph</h2>
+          <div class="flex gap-3">
+            <button id="kg-view-graph" class="px-4 py-2 text-sm bg-amber-600 text-white">Graph</button>
+            <button id="kg-view-list" class="px-4 py-2 text-sm border">List</button>
+            <select id="kg-graph-limit" class="border rounded px-2 py-1"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option></select>
+            <select id="kg-graph-type-filter" class="border rounded px-2 py-1"><option value="all">All</option><option value="concept">concept</option><option value="file">file</option><option value="function">function</option><option value="error">error</option></select>
+            <button id="kg-graph-refresh" class="px-3 py-1.5 text-sm bg-amber-600 text-white">Refresh</button>
+          </div>
+          <div id="kg-graph-vie"><div id="kg-graph-canvas" style="height:70vh;min-height:500px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa;"></div>
+          <div class="flex gap-3 mt-3 text-xs text-gray-500"><span><strong id="kg-node-count">0</strong> nodes</span><span><strong id="kg-edge-count">0</strong> edges</span></div></div>
+          <div id="kg-list-view" class="hidden"><input id="kg-entity-search" type="text" placeholder="Filter entities..." class="w-full border rounded px-3 py-2 text-sm mb-3"/><div id="kg-entity-list" class="grid gap-2 max-h-[60vh] overflow-y-auto"></div></div>
+          <div id="kg-entity-detail" class="hidden mt-4 border border-amber-200 bg-amber-50 rounded-xl p-4"><h3 id="kg-detail-title"></h3><button id="kg-detail-close">x</button><div id="kg-detail-content"></div></div>
+        </section>
+<!-- Admin -->
+        <section id="admin" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <h2 class="text-xl font-semibold text-gray-900">Admin Panel</h2>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl space-y-2">
+              <div class="font-semibold">KG Operations</div>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="admin-kg-worker" class="px-3 py-2 text-sm rounded bg-orange-600 text-white">Run KG Worker</button>
+                <button id="admin-kg-dead-reason" class="px-3 py-2 text-sm rounded bg-orange-500 text-white">Requeue (reason)</button>
+                <button id="admin-kg-dead-json" class="px-3 py-2 text-sm rounded bg-orange-500 text-white">Requeue (json)</button>
+                <button id="admin-kg-dead-rate" class="px-3 py-2 text-sm rounded bg-orange-500 text-white">Requeue (rate)</button>
+              </div><div id="admin-kg-result" class="text-xs text-orange-700"></div>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl space-y-2">
+              <div class="font-semibold">Session Ops</div>
+              <input id="admin-session-id" type="text" placeholder="Session ID" class="w-full border rounded px-3 py-1 text-xs"/>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="admin-repair-session" class="px-3 py-2 text-sm rounded bg-blue-600 text-white">Repair</button>
+                <button id="admin-continuation-metrics" class="px-3 py-2 text-sm rounded bg-blue-500 text-white">Reconcile Metrics</button>
+              </div><div id="admin-session-result" class="text-xs text-blue-700"></div>
+            </div>
+          </div>
+          <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl space-y-2">
+            <div class="font-semibold">Model Config</div>
+            <div id="admin-model-config" class="text-sm"></div>
+            <button id="admin-model-refresh" class="px-3 py-1.5 text-xs rounded bg-purple-600 text-white">Refresh Config</button>
+          </div>
+          <div class="bg-green-50 border border-green-200 p-4 rounded-xl space-y-2">
+            <div class="font-semibold">Events</div>
+            <div id="admin-events-stats" class="text-sm"></div>
+            <button id="admin-events-refresh" class="px-3 py-1.5 text-xs rounded bg-green-600 text-white">Refresh Events</button>
+          </div>
         </section>
       </main>
     </div>
@@ -1092,6 +1165,60 @@
     loadResume();
     loadSessions();
     runSelfCheck();
-  </script>
+  
+/* =====================================================================
+ * P1-P6 UNIFIED JS
+ * ==================================================================== */
+(function(){var _e=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');};
+/* GS */
+var _gsq=document.getElementById('global-search-query'),_gst=document.getElementById('global-search-submit'),_gsm=document.getElementById('global-search-meta'),_gsr=document.getElementById('global-search-results');
+if(_gsq&&_gst){_gst.addEventListener('click',function(){var q=_gsq.value.trim();if(!q)return;var m='hybrid';var rs=document.getElementsByName('global-search-mode');for(var i=0;i<rs.length;i++){if(rs[i].checked)m=rs[i].value;}
+var tk=parseInt(document.getElementById('global-search-topk').value)||10;_gsm.textContent='searching...';_gsr.innerHTML='';
+if(m==='prefetch'){fetch('/users/jimwong/proactive-prefetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task_type:'general',context:q,user_id:'jimwong',top_k:tk})}).then(function(r){return r.json()}).then(function(d){_gsm.textContent='"'+q+'" | prefetch | '+(d.entities||[]).length+' entities';}).catch(function(e){_gsm.textContent='Error: '+e.message;});}
+else{var url='/api/v1/query';fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,mode:'hybrid',top_k:tk})}).then(function(r){return r.json()}).then(function(d){var h='';var es=d.entities||[];for(var i=0;i<es.length;i++){h+='<div class="border border-gray-200 rounded-lg p-3 m-1 inline-block"><span class="text-xs rounded bg-amber-100 px-1">'+_e(es[i].entity_type)+'</span> '+_e(es[i].name)+'</div>';}_gsr.innerHTML=h||'<div class=text-sm>No results</div>';_gsm.textContent='"'+q+'" | '+m+' | '+es.length+' entities';}).catch(function(e){_gsm.textContent='Error: '+e.message;});}});
+_gsq.addEventListener('keydown',function(e){if(e.key==='Enter')_gst.click();});}
+/* Header search */
+var _gsi=document.getElementById('global-search-input');if(_gsi){var _gstimer=null;_gsi.addEventListener('input',function(){clearTimeout(_gstimer);_gstimer=setTimeout(function(){},300);});}
+/* Ctrl+K */
+document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();var _i=document.getElementById('global-search-input')||document.getElementById('global-search-query');if(_i)_i.focus();}});
+/* KG */
+var _kgr=document.getElementById('kg-graph-refresh');if(_kgr){_kgr.addEventListener('click',function(){var lim=document.getElementById('kg-graph-limit').value;fetch('/api/v1/kg/graph?limit='+lim).then(function(r){return r.json()}).then(function(d){var nodes=(d.nodes||[]).map(function(n){return{id:n.id,label:(n.label||'').slice(0,30),color:{background:{concept:'#fbbf24',file:'#60a5fa',function:'#34d399',error:'#f87171'}[n.type]||'#9ca3af',border:'#fff'},size:15};});var edges=(d.edges||[]).map(function(e){return{from:e.source,to:e.target,label:e.relation_type,arrows:'to',color:{color:'#d1d5db'}};});var cx=document.getElementById('kg-graph-canvas');if(window._kgNet)window._kgNet.destroy();window._kgNet=new vis.Network(cx,{nodes:new vis.DataSet(nodes),edges:new vis.DataSet(edges)},{layout:{improvedLayout:true},physics:{enabled:true}});document.getElementById('kg-node-count').textContent=nodes.length;document.getElementById('kg-edge-count').textContent=edges.length;}).catch(function(e){console.error(e);});});}
+var _kgvg=document.getElementById('kg-view-graph'),_kgvl=document.getElementById('kg-view-list');if(_kgvg)_kgvg.addEventListener('click',function(){document.getElementById('kg-graph-view').classList.remove('hidden');document.getElementById('kg-list-view').classList.add('hidden');});if(_kgvl)_kgvl.addEventListener('click',function(){document.getElementById('kg-graph-view').classList.add('hidden');document.getElementById('kg-list-view').classList.remove('hidden');});
+/* Memory */
+var _ms=document.getElementById('memory-atom-search');if(_ms){_ms.addEventListener('input',function(){var q=this.value.toLowerCase();var ks=document.getElementById('memory-atoms').children;for(var i=0;i<ks.length;i++)ks[i].style.display=(!q||ks[i].textContent.toLowerCase().includes(q))?'':'none';});}
+var _mso=document.getElementById('memory-atoms-sort');if(_mso){_mso.addEventListener('change',function(){if(!window._atomCache)return;var m=this.value;window._atomCache.sort(function(a,b){if(m==='newest')return new Date(b.created_at)-new Date(a.created_at);if(m==='oldest')return new Date(a.created_at)-new Date(b.created_at);if(m==='confidence')return(b.confidence_score||0)-(a.confidence_score||0);return 0;});});}
+var _mex=document.getElementById('memory-export-btn');if(_mex){_mex.addEventListener('click',function(){var u='jimwong';fetch('/api/v1/users/'+u+'/memory/export').then(function(r){if(!r.ok)throw new Error(r.status);return r.blob();}).then(function(b){var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='memory-'+u+'.tar.gz';a.click();}).catch(function(e){alert(e.message);});});}
+/* Sessions */
+var SEL=new Set();var _injIval=setInterval(function(){var cs=document.querySelectorAll('[data-session-id]:not([data-p4])');cs.forEach(function(c){c.dataset.p4='1';var sid=c.dataset.sessionId?c.dataset.sessionId:'';var cb=document.createElement('input');cb.type='checkbox';cb.className='session-checkbox';cb.dataset.sid=sid;cb.addEventListener('change',function(){if(this.checked)SEL.add(this.dataset.sid);else SEL.delete(this.dataset.sid);var b=document.getElementById('sessions-batch-actions');var cnt=document.getElementById('sessions-selected-count');if(b){b.style.display=SEL.size?'flex':'none';if(cnt)cnt.textContent=SEL.size+' selected';}});c.insertBefore(cb,c.firstChild);});},500);
+var _ba=document.getElementById('batch-archive');if(_ba)_ba.addEventListener('click',function(){var sids=Array.from(SEL);sids.forEach(function(s){fetch('/api/v1/sessions/'+s+'/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});});setTimeout(function(){if(typeof loadSessions==='function')loadSessions();SEL.clear();},1000);});
+var _bd=document.getElementById('batch-delete');if(_bd)_bd.addEventListener('click',function(){if(confirm('Delete '+SEL.size+' sessions?')){var sids=Array.from(SEL);sids.forEach(function(s){fetch('/api/v1/sessions/'+s,{method:'DELETE'});});setTimeout(function(){if(typeof loadSessions==='function')loadSessions();SEL.clear();},1000);}});
+var _bc=document.getElementById('batch-clear');if(_bc)_bc.addEventListener('click',function(){SEL.clear();document.querySelectorAll('.session-checkbox').forEach(function(c){c.checked=false;});document.getElementById('sessions-batch-actions').style.display='none';});
+/* Admin */
+function _ap(url){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'}}).then(function(r){return r.text()}).catch(function(e){return 'Error: '+e.message;});}
+var w=document.getElementById('admin-kg-worker');if(w)w.addEventListener('click',function(){_ap('/api/v1/admin/ops/run-kg-worker-once').then(function(t){document.getElementById('admin-kg-result').textContent=t;});});
+var d1=document.getElementById('admin-kg-dead-reason');if(d1)d1.addEventListener('click',function(){_ap('/api/v1/admin/ops/requeue-kg-deadletters?reason=extract_exception').then(function(t){document.getElementById('admin-kg-result').textContent=t;});});
+var d2=document.getElementById('admin-kg-dead-json');if(d2)d2.addEventListener('click',function(){_ap('/api/v1/admin/ops/requeue-kg-deadletters?reason=json_extract_failed').then(function(t){document.getElementById('admin-kg-result').textContent=t;});});
+var d3=document.getElementById('admin-kg-dead-rate');if(d3)d3.addEventListener('click',function(){_ap('/api/v1/admin/ops/requeue-kg-deadletters?reason=rate_limited_upstream').then(function(t){document.getElementById('admin-kg-result').textContent=t;});});
+var rp=document.getElementById('admin-repair-session');if(rp)rp.addEventListener('click',function(){var sid=document.getElementById('admin-session-id').value.trim()||(appState?appState.selectedSessionId:'');_ap('/api/v1/admin/ops/repair-stuck-session',{method:'POST',body:JSON.stringify({session_id:sid})}).then(function(t){document.getElementById('admin-session-result').textContent=t;});});
+var cm=document.getElementById('admin-continuation-metrics');if(cm)cm.addEventListener('click',function(){_ap('/api/v1/admin/ops/reconcile-continuation-metrics').then(function(t){document.getElementById('admin-session-result').textContent=t;});});
+var mr=document.getElementById('admin-model-refresh');if(mr)mr.addEventListener('click',function(){fetch('/api/v1/admin/config/model').then(function(r){return r.json()}).then(function(d){document.getElementById('admin-model-config').innerHTML=JSON.stringify(d).slice(0,300);});});
+var er=document.getElementById('admin-events-refresh');if(er)er.addEventListener('click',function(){fetch('/api/v1/admin/raw-events/stats').then(function(r){return r.json()}).then(function(d){document.getElementById('admin-events-stats').innerHTML=JSON.stringify(d).slice(0,300);});});
+/* Self-Check */
+var dh=document.getElementById('selt-check-deeph');if(dh){dh.addEventListener('click',function(){var re=document.getElementById('selt-check-result');fetch('/health?deep=true').then(function(r){return r.json()}).then(function(d){re.textContent='Deep health: '+JSON.stringify(d).slice(0,200);}).catch(function(e){re.textContent='Error: '+e.message;});});}
+/* P6 Dark Mode */
+var IS_DARK=false;function _ad(e){IS_DARK=e;document.body.classList.toggle('dark',e);try{localStorage.setItem('sm-dark',e?'1':'0');}catch(ex){}var b=document.getElementById('dark-toggle');if(b)b.textContent=e?'Lgt':'Dark';}
+try{var sv=localStorage.getItem('sm-dark');if(sv==='1')_ad(true);else if(sv==='0')_ad(false);else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)_ad(true);}catch(e){}
+var _dt=document.getElementById('dark-toggle');if(_dt){_dt.addEventListener('click',function(){_ad(!IS_DARK);});_ad(IS_DARK);}
+/* P6 Keyboard */
+document.addEventListener('keydown',function(e){
+  var TAB_KEYS={'Digit1':'#overview','Digit2':'#search','Digit3':'#resume','Digit4':'#sessions','Digit5':'#self-check','Digit6':'#global-search','Digit7':'#kg-graph','Digit8':'#admin'};
+  if(e.altKey&&TAB_KEYS[e.code]){e.preventDefault();var el=document.querySelector(TAB_KEYS[e.code]);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth'});}
+  if(e.ctrlKey&&e.shiftKey&&e.key==='G'){e.preventDefault();_ad(!IS_DARK);}
+  if(e.key==='?'&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();alert('Shortcuts: Alt+1-8=Jump tabs | Ctrl+K=Search | Ctrl+Shift+G=Dark | ?=Help');}
+});
+console.log('[P1-P6] All enhancements loaded');
+})();
+
+</script>
 </body>
 </html>

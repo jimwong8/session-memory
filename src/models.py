@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from src.config import settings
@@ -40,6 +40,9 @@ class Session(Base):
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     message_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    canvas_mermaid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pyramid_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="session", cascade="all, delete-orphan", order_by="Message.created_at"
@@ -142,6 +145,11 @@ class KGEntity(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+    level: Mapped[str] = mapped_column(String(8), default="L1", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -171,6 +179,10 @@ class KGRelation(Base):
     relation_type: Mapped[str] = mapped_column(String(100), nullable=False)
     message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -230,3 +242,110 @@ class KGJob(Base):
         Index("idx_kg_jobs_session_created", "session_id", "created_at"),
     )
 
+
+class MemoryAtom(Base):
+    """L1 记忆原子 - 原子事实"""
+
+    __tablename__ = "memory_atoms"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    project_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    kind: Mapped[str] = mapped_column(
+        String(32), default="fact",
+        nullable=False
+    )
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True, default=list)
+    source_message_ids: Mapped[list | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    confidence_score: Mapped[float | None] = mapped_column(Float, default=0.8)
+    sensitivity_level: Mapped[str] = mapped_column(String(16), default="normal", nullable=False)
+    dedup_signature: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("memory_atoms.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        Index("idx_atoms_user_kind", "user_id", "kind", "created_at"),
+        Index("idx_atoms_dedup", "user_id", "dedup_signature",
+              postgresql_where=text("dedup_signature IS NOT NULL")),
+    )
+
+
+class MemoryScenario(Base):
+    """L2 场景块 - 聚合原子事实的场景叙事"""
+
+    __tablename__ = "memory_scenarios"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    project_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    narrative_md: Mapped[str] = mapped_column(Text, nullable=False)
+    atom_ids: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True, default=list)
+    session_ids: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True, default=list)
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        Index("idx_scenarios_user", "user_id", "created_at"),
+    )
+
+
+class Persona(Base):
+    """L3 用户画像 - 个人偏好与长期特征"""
+
+    __tablename__ = "personas"
+
+    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    profile_md: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    preferences_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    scenario_ids: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class PersonaHistory(Base):
+    """L3 用户画像历史版本"""
+
+    __tablename__ = "persona_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_md: Mapped[str] = mapped_column(Text, nullable=False)
+    preferences_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        Index("idx_persona_history_user", "user_id", "version"),
+    )
