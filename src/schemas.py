@@ -492,6 +492,8 @@ class GlobalModelConfig(BaseModel):
     summary_model: str
     backup_openai_model: str = ""
     backup_summary_model: str = ""
+    tertiary_openai_model: str = ""
+    tertiary_summary_model: str = ""
     llm_routing_mode: str = "fallback"
 
 

@@ -1014,9 +1014,10 @@
           evaluate: function(data, cost) {
             const value = data && data.value ? data.value : {};
             const routingMode = value.llm_routing_mode || 'unknown';
-            const hasCore = Boolean(value.openai_model || value.summary_model || value.backup_openai_model || value.backup_summary_model);
+            const hasCore = Boolean(value.openai_model || value.summary_model || value.backup_openai_model || value.backup_summary_model || value.tertiary_openai_model || value.tertiary_summary_model);
             const status = hasCore ? 'ok' : 'degraded';
-            const detail = 'routing=' + routingMode + '; model=' + (value.openai_model || 'unknown') + '; ' + cost + 'ms';
+            var models = [value.openai_model || 'unknown']; if (value.backup_openai_model) models.push(value.backup_openai_model); if (value.tertiary_openai_model) models.push(value.tertiary_openai_model);
+            const detail = 'routing=' + routingMode + '; models=[' + models.join(',') + ']; ' + cost + 'ms';
             return { status: status, detail: detail, ok: hasCore };
           }
         }
