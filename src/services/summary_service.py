@@ -112,7 +112,7 @@ class SummaryService:
                 for msg in chunk:
                     parts.append(f"[{msg.role}]: {msg.content}")
                 chunk_text = "\n".join(parts)
-                chunk_summary = await generate_summary(chunk_text)
+                chunk_summary = await generate_summary(chunk_text, task_type="summary")
                 chunk_summaries.append(chunk_summary)
 
             # 多分块时再做合并摘要

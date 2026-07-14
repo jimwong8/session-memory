@@ -337,7 +337,7 @@ class KnowledgeGraphService:
             reply, _ = await chat_completion([
                 {"role": "system", "content": "你只能输出一个 JSON 对象，不能输出解释、markdown、<think> 或额外文本。"},
                 {"role": "user", "content": prompt},
-            ], temperature=0.0, max_tokens=3000)
+            ], temperature=0.0, max_tokens=3000, task_type="kg_extract")
             logger.info(f"知识图谱原始返回: {reply[:1000]}")
             data = self._extract_json_payload(reply)
 

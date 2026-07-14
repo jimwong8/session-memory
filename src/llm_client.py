@@ -60,6 +60,63 @@ def _routing_mode() -> str:
     return mode if mode in {'fallback', 'load_balance'} else 'fallback'
 
 
+# ── Dual-Model Task-Based Routing ──────────────────────────
+# Heavy tasks (reasoning, synthesis, extraction) → backup (DeepSeek-R1)
+# Quick tasks (chat, simple queries) → primary (DeepSeek-V3)
+_TASK_ROUTE_MAP = {
+    "summary": "backup",
+    "kg_extract": "backup",
+    "synthesize": "backup",
+    "persona": "backup",
+    "atom_build": "backup",
+    "scenario_build": "backup",
+    "bridge": "backup",
+    "entity_expansion": "backup",
+    "chat": "primary",
+    "query": "primary",
+    "context_inject": "primary",
+    "quick_reply": "primary",
+}
+
+def _select_route_for_task(task_type: str | None) -> list[dict] | None:
+    """Return custom route order for a task type, or None for default."""
+    if not task_type or task_type not in _TASK_ROUTE_MAP:
+        return None
+    primary = _primary_model_config()
+    backup = _backup_model_config()
+    preference = _TASK_ROUTE_MAP[task_type]
+    if preference == "backup" and backup:
+        return [backup, primary]
+    return [primary]
+
+
+# ── Convenience functions ──────────────────────────────────
+
+async def chat_completion_for_extraction(
+    messages: list[dict[str, str]],
+    temperature: float = 0.0,
+    max_tokens: int = 3000,
+) -> tuple[str, int]:
+    """KG extraction — uses DeepSeek-R1 for better entity/relation recognition."""
+    return await chat_completion(
+        messages, temperature=temperature, max_tokens=max_tokens,
+        task_type="kg_extract",
+    )
+
+
+async def chat_completion_quick(
+    messages: list[dict[str, str]],
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+) -> tuple[str, int]:
+    """Quick chat — uses DeepSeek-V3 for speed."""
+    return await chat_completion(
+        messages, temperature=temperature, max_tokens=max_tokens,
+        task_type="chat",
+    )
+
+
+
 def _route_key(route: dict[str, str]) -> tuple[str, str]:
     return (route.get('api_key', ''), route.get('base_url', ''))
 
@@ -200,13 +257,19 @@ async def create_embeddings_batch(texts: list[str]) -> list[list[float]]:
     return await asyncio.to_thread(_sync_create_embeddings_batch, texts)
 
 
-async def generate_summary(messages_text: str) -> str:
+async def generate_summary(messages_text: str, task_type: str | None = None) -> str:
     conf = await _get_global_model_config()
     requested_model = conf.get("summary_model", settings.summary_model)
     errors: list[str] = []
     primary = _primary_model_config()
     attempted = 0
-    for route in _route_text_configs('summary'):
+
+    # Task-based routing: summary → R1, quick → V3
+    if task_type is None:
+        task_type = "summary"
+    route_order = _select_route_for_task(task_type) or _route_text_configs('summary')
+
+    for route in route_order:
         if not _route_available(route, operation='summary'):
             continue
         attempted += 1
@@ -239,12 +302,19 @@ async def chat_completion(
     messages: list[dict[str, str]],
     temperature: float = 0.7,
     max_tokens: int = 2000,
+    task_type: str | None = None,
 ) -> tuple[str, int]:
     conf = await _get_global_model_config()
     requested_model = conf.get("openai_model", settings.openai_model)
     errors: list[str] = []
-    routes = _route_text_configs('chat')
     primary = _primary_model_config()
+
+    # Task-based routing
+    route_override = _select_route_for_task(task_type)
+    if route_override:
+        routes = route_override
+    else:
+        routes = _route_text_configs('chat')
     attempted = 0
     for route in routes:
         if not _route_available(route, operation='chat'):
