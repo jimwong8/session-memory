@@ -41,3 +41,7 @@ backups/
 __pycache__/
 .cron/
 *.pyc
+_debug_chat.py
+src/_debug_*.py
+src/services/*.orig
+scripts/fix_routes*.py
