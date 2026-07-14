@@ -664,7 +664,8 @@
           statCard('KG Queue', kgOps.queue_ready_total != null ? kgOps.queue_ready_total : '-', '知识图谱 ready 队列'),
           statCard('Deadletters', kgOps.deadletter_total != null ? kgOps.deadletter_total : '-', '知识图谱死信总量'),
           statCard('Routing Mode', routingMode, '当前模型路由模式'),
-          statCard('Models', primaryModel, 'summary: ' + summaryModel),
+          var allModels = [primaryModel]; if (modelValue.backup_openai_model) allModels.push(modelValue.backup_openai_model); if (modelValue.tertiary_openai_model) allModels.push(modelValue.tertiary_openai_model);
+          statCard('Models (' + allModels.length + ')', allModels.join(', '), 'summary: ' + summaryModel),
           statCard('Alerts', alerts.status || 'unknown', 'checks=' + (alerts.checks_evaluated != null ? alerts.checks_evaluated : '-')),
           statCard('Generated At', generatedAt, 'dashboard 生成时间')
         ].join('');
