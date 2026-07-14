@@ -664,8 +664,7 @@
           statCard('KG Queue', kgOps.queue_ready_total != null ? kgOps.queue_ready_total : '-', '知识图谱 ready 队列'),
           statCard('Deadletters', kgOps.deadletter_total != null ? kgOps.deadletter_total : '-', '知识图谱死信总量'),
           statCard('Routing Mode', routingMode, '当前模型路由模式'),
-          var allModels = [primaryModel]; if (modelValue.backup_openai_model) allModels.push(modelValue.backup_openai_model); if (modelValue.tertiary_openai_model) allModels.push(modelValue.tertiary_openai_model);
-          statCard('Models (' + allModels.length + ')', allModels.join(', '), 'summary: ' + summaryModel),
+          statCard('Models', primaryModel + (modelValue.backup_openai_model ? ', ' + modelValue.backup_openai_model : '') + (modelValue.tertiary_openai_model ? ', ' + modelValue.tertiary_openai_model : ''), 'summary: ' + summaryModel),
           statCard('Alerts', alerts.status || 'unknown', 'checks=' + (alerts.checks_evaluated != null ? alerts.checks_evaluated : '-')),
           statCard('Generated At', generatedAt, 'dashboard 生成时间')
         ].join('');
@@ -1017,7 +1016,7 @@
             const routingMode = value.llm_routing_mode || 'unknown';
             const hasCore = Boolean(value.openai_model || value.summary_model || value.backup_openai_model || value.backup_summary_model || value.tertiary_openai_model || value.tertiary_summary_model);
             const status = hasCore ? 'ok' : 'degraded';
-            var models = [value.openai_model || 'unknown']; if (value.backup_openai_model) models.push(value.backup_openai_model); if (value.tertiary_openai_model) models.push(value.tertiary_openai_model);
+            const models = (value.openai_model || 'unknown') + (value.backup_openai_model ? ',' + value.backup_openai_model : '') + (value.tertiary_openai_model ? ',' + value.tertiary_openai_model : '');
             const detail = 'routing=' + routingMode + '; models=[' + models.join(',') + ']; ' + cost + 'ms';
             return { status: status, detail: detail, ok: hasCore };
           }
