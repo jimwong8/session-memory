@@ -160,6 +160,70 @@ class BridgeService:
         results.sort(key=lambda r: r.score, reverse=True)
         return results[:expansion_limit]
 
+    async def expand_by_entity_names(
+        self,
+        entity_names: list[str],
+        *,
+        limit_per_entity: int = 5,
+        total_limit: int = 10,
+    ) -> list:
+        """Given entity names directly, find messages mentioning them."""
+        if not entity_names:
+            return []
+
+        entity_names = entity_names[:10]
+        results = []
+        seen_ids = set()
+
+        for entity_name in entity_names:
+            if len(results) >= total_limit:
+                break
+
+            msg_sql = sa_text("""
+                SELECT id, content, role, session_id, created_at
+                FROM messages
+                WHERE content ILIKE :entity_pattern
+                  AND role IN ('user', 'assistant')
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """)
+
+            try:
+                result = await self.db.execute(
+                    msg_sql.bindparams(
+                        entity_pattern=f"%{entity_name}%",
+                        limit=limit_per_entity,
+                    )
+                )
+                rows = result.all()
+            except Exception as exc:
+                logger.debug("Entity expansion search failed for %s: %s", entity_name, exc)
+                continue
+
+            for row in rows:
+                msg_id = str(row[0])
+                if msg_id in seen_ids:
+                    continue
+                seen_ids.add(msg_id)
+                score = self._compute_entity_score(row[1] or "", entity_name)
+                results.append(
+                    EntityResult(
+                        memory_id=msg_id,
+                        content=(row[1] or "")[:500],
+                        role=row[2],
+                        session_id=str(row[3]),
+                        score=score,
+                        matched_entity=entity_name,
+                        entity_category="",
+                        timestamp=str(row[4]),
+                    )
+                )
+                if len(results) >= total_limit:
+                    break
+
+        return results
+
+
     async def expand_by_entity(
         self,
         seed_message_ids: list[str],

@@ -1918,7 +1918,11 @@ class BridgeSearchRequest(BaseModel):
 class EntityExpansionRequest(BaseModel):
     seed_message_ids: list[str] = Field(
         description="Seed message IDs for entity extraction",
-        min_length=1, max_length=10,
+        min_length=0, max_length=10, default=[],
+    )
+    entity_names: list[str] = Field(
+        description="Entity names to expand directly",
+        default=[],
     )
     limit_per_entity: int = Field(default=5, ge=1, le=20)
     total_limit: int = Field(default=10, ge=1, le=50)
@@ -1972,11 +1976,18 @@ async def entity_expansion(
     from src.services.bridge_service import BridgeService
 
     svc = BridgeService(db)
-    expansions = await svc.expand_by_entity(
-        data.seed_message_ids,
-        limit_per_entity=data.limit_per_entity,
-        total_limit=data.total_limit,
-    )
+    if data.entity_names:
+        expansions = await svc.expand_by_entity_names(
+            data.entity_names,
+            limit_per_entity=data.limit_per_entity,
+            total_limit=data.total_limit,
+        )
+    else:
+        expansions = await svc.expand_by_entity(
+            data.seed_message_ids,
+            limit_per_entity=data.limit_per_entity,
+            total_limit=data.total_limit,
+        )
 
     return {
         "status": "success",
