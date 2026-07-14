@@ -65,7 +65,7 @@ def _routing_mode() -> str:
 # Quick tasks (chat, simple queries) → primary (DeepSeek-V3)
 _TASK_ROUTE_MAP = {
     "summary": "backup",
-    "kg_extract": "backup",
+    "kg_extract": "primary",
     "synthesize": "backup",
     "persona": "backup",
     "atom_build": "backup",
