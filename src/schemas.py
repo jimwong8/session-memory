@@ -214,6 +214,8 @@ class KGRelationResponse(BaseModel):
 class KGSearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(5, ge=1, le=20)
+    auto_decompose: bool = False
+    recency_bias: str = Field("off", pattern=r"^(on|auto|off)$")
 
 
 class KGSearchResponse(BaseModel):
@@ -222,6 +224,8 @@ class KGSearchResponse(BaseModel):
     top_k: int
     entities: list[KGEntityResponse] = []
     relations: list[KGRelationResponse] = []
+    decomposed_queries: list[str] = []
+    recency_bias_active: bool = False
 
 
 class KGSessionRefResponse(BaseModel):
@@ -235,6 +239,8 @@ class UnifiedQueryRequest(BaseModel):
     mode: str = Field("hybrid", pattern=r"^(vector|graph|hybrid)$")
     session_id: uuid.UUID | None = None
     top_k: int = Field(5, ge=1, le=20)
+    auto_decompose: bool = False
+    recency_bias: str = Field("off", pattern=r"^(on|auto|off)$")
 
 
 class UnifiedQueryResponse(BaseModel):
@@ -245,6 +251,8 @@ class UnifiedQueryResponse(BaseModel):
     messages: list[MessageResponse] = []
     entities: list[KGEntityResponse] = []
     relations: list[KGRelationResponse] = []
+    decomposed_queries: list[str] = []
+    recency_bias_active: bool = False
 
 
 class KGGraphNode(BaseModel):
@@ -275,6 +283,8 @@ class ProjectSharedContextResponse(BaseModel):
     summaries: list[str] = []
     entities: list[KGEntityResponse] = []
     relations: list[KGRelationResponse] = []
+    decomposed_queries: list[str] = []
+    recency_bias_active: bool = False
 
 # ── Dashboard 聚合接口 ───────────────────────────────────────────────────────
 

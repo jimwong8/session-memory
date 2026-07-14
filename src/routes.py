@@ -1,3 +1,4 @@
+import re
 """FastAPI 路由 - 会话管理 API"""
 
 import json
@@ -7,7 +8,7 @@ from pathlib import Path
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func, text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -716,6 +717,8 @@ async def unified_query(
     messages = []
     entities = []
     relations = []
+    decomposed_queries = []
+    recency_bias_active = False
 
     if data.mode in ("vector", "hybrid"):
         hits = await hybrid_recall(
@@ -742,6 +745,19 @@ async def unified_query(
         entities = [KGEntityResponse.model_validate(e) for e in ents]
         relations = [KGRelationResponse.model_validate(r) for r in rels]
 
+    # Temporal recency bias
+    recency_weight = 0.15 if recency_bias in ("on", "auto") else 0.0
+    if recency_bias == "auto":
+        temporal_words = {"latest", "current", "recent", "newest"}
+        recency_weight = 0.15 if any(w in data.query.lower() for w in temporal_words) else 0.0
+        recency_bias_active = recency_weight > 0
+    elif recency_bias == "on":
+        recency_bias_active = True
+
+    if recency_weight > 0:
+        from src.services.bridge_service import apply_temporal_recency_bias
+        apply_temporal_recency_bias(messages, weight=recency_weight)
+
     return UnifiedQueryResponse(
         mode=data.mode,
         query=data.query,
@@ -750,6 +766,8 @@ async def unified_query(
         messages=messages,
         entities=entities,
         relations=relations,
+        decomposed_queries=decomposed_queries,
+        recency_bias_active=recency_bias_active,
     )
 
 
@@ -1879,3 +1897,135 @@ async def project_search_summaries(
         "project_id": project_id,
         "summaries": [{"content": s.content, "session_id": str(s.session_id), "created_at": str(s.created_at)} for s in summaries],
     }
+
+
+
+
+
+# -- AutoMem-Inspired Features ------------------------------------
+
+class BridgeSearchRequest(BaseModel):
+    seed_message_ids: list[str] = Field(
+        description="Seed message IDs to find bridges between",
+        min_length=1, max_length=10,
+    )
+    max_hops: int = Field(default=2, ge=1, le=3)
+    per_seed_limit: int = Field(default=5, ge=1, le=20)
+    expansion_limit: int = Field(default=10, ge=1, le=50)
+    min_score: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class EntityExpansionRequest(BaseModel):
+    seed_message_ids: list[str] = Field(
+        description="Seed message IDs for entity extraction",
+        min_length=1, max_length=10,
+    )
+    limit_per_entity: int = Field(default=5, ge=1, le=20)
+    total_limit: int = Field(default=10, ge=1, le=50)
+
+
+@router.post("/recall/bridge")
+async def bridge_search(
+    data: BridgeSearchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Multi-hop bridge discovery: find memories that connect seeds via graph."""
+    from src.services.bridge_service import BridgeService
+
+    svc = BridgeService(db)
+    bridges = await svc.discover_bridges(
+        data.seed_message_ids,
+        max_hops=data.max_hops,
+        per_seed_limit=data.per_seed_limit,
+        expansion_limit=data.expansion_limit,
+        min_score=data.min_score,
+    )
+
+    return {
+        "status": "success",
+        "bridges": [
+            {
+                "memory_id": b.memory_id,
+                "content": b.content,
+                "role": b.role,
+                "session_id": b.session_id,
+                "score": b.score,
+                "bridge_path": b.bridge_path,
+                "relation_types": b.relation_types,
+                "entity_names": b.entity_names,
+                "timestamp": b.timestamp,
+            }
+            for b in bridges
+        ],
+        "count": len(bridges),
+        "seed_count": len(data.seed_message_ids),
+        "max_hops": data.max_hops,
+    }
+
+
+@router.post("/recall/expand-entities")
+async def entity_expansion(
+    data: EntityExpansionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Entity expansion: extract entities from seeds, find related memories."""
+    from src.services.bridge_service import BridgeService
+
+    svc = BridgeService(db)
+    expansions = await svc.expand_by_entity(
+        data.seed_message_ids,
+        limit_per_entity=data.limit_per_entity,
+        total_limit=data.total_limit,
+    )
+
+    return {
+        "status": "success",
+        "expansions": [
+            {
+                "memory_id": e.memory_id,
+                "content": e.content,
+                "role": e.role,
+                "session_id": e.session_id,
+                "score": e.score,
+                "matched_entity": e.matched_entity,
+                "entity_category": e.entity_category,
+                "timestamp": e.timestamp,
+            }
+            for e in expansions
+        ],
+        "count": len(expansions),
+        "seed_count": len(data.seed_message_ids),
+    }
+
+
+@router.post("/recall/decompose")
+async def decompose_query(data: dict):
+    """Auto-decompose a complex query into entity+topic sub-queries."""
+    from src.services.bridge_service import decompose_query
+
+    query = data.get("query", "")
+    decomposed = decompose_query(query)
+
+    words = query.split()
+    entities = []
+    stopwords = {"what", "would", "could", "does", "did", "how", "why", "when",
+                 "where", "which", "who", "will", "can", "should"}
+    for i, word in enumerate(words):
+        clean = re.sub(r"[^\w]", "", word)
+        if len(clean) < 2 or clean.lower() in stopwords:
+            continue
+        if clean[0].isupper() and clean[1:].islower():
+            if i == 0 or (i > 0 and words[i-1][-1] not in ".?!"):
+                entities.append(clean)
+
+    topics = [w for w in re.findall(r"[a-z]{4,}", query.lower()) if w not in stopwords][:5]
+
+    return {
+        "original_query": query,
+        "decomposed_queries": decomposed,
+        "entities_found": entities,
+        "topics_found": topics,
+    }
+
+
+

@@ -114,8 +114,8 @@ class KnowledgeGraphService:
         relations: list[dict[str, str]] = []
         seen_entities: set[tuple[str, str]] = set()
         allowed_entity_types = {"file", "function", "concept", "error"}
-        allowed_relation_types = {"modifies", "depends_on", "fixes"}
-        relation_type_map = {"依赖": "depends_on", "修改": "modifies", "修复": "fixes"}
+        allowed_relation_types = {"modifies", "depends_on", "fixes", "exemplifies", "prefers_over", "contradicts", "reinforces", "evolved_into", "invalidated_by", "leads_to", "derived_from", "part_of"}
+        relation_type_map = {"依赖": "depends_on", "修改": "modifies", "修复": "fixes", "例如": "exemplifies", "偏好": "prefers_over", "更喜欢": "prefers_over", "矛盾": "contradicts", "反驳": "contradicts", "强化": "reinforces", "支持": "reinforces", "演化": "evolved_into", "演化为": "evolved_into", "失效": "invalidated_by", "取代": "invalidated_by", "导致": "leads_to", "来源于": "derived_from", "源自": "derived_from", "属于": "part_of", "部分": "part_of"}
 
         for line in text.splitlines():
             stripped = line.strip()
@@ -129,7 +129,7 @@ class KnowledgeGraphService:
                     seen_entities.add((name, ent_type))
                     entities.append({"name": name[:160], "type": ent_type})
 
-            relation_match = re.search(r'^\s*(?:\d+[\.、)]|[-*])?\s*(.+?)\s*和\s*(.+?)\s*[-—:：].*?(modifies|depends_on|fixes|依赖|修改|修复)', stripped, flags=re.IGNORECASE)
+            relation_match = re.search(r'^\s*(?:\d+[\.、)]|[-*])?\s*(.+?)\s*和\s*(.+?)\s*[-—:：].*?(modifies|depends_on|fixes|exemplifies|prefers_over|contradicts|reinforces|evolved_into|invalidated_by|leads_to|derived_from|part_of|依赖|修改|修复|例如|偏好|更喜欢|矛盾|反驳|强化|支持|演化|演化为|失效|取代|导致|来源于|源自|属于|部分)', stripped, flags=re.IGNORECASE)
             if relation_match:
                 source = relation_match.group(1).strip().strip(chr(96)).strip(chr(39)).strip(chr(34))
                 target = relation_match.group(2).strip().strip(chr(96)).strip(chr(39)).strip(chr(34))
@@ -314,21 +314,25 @@ class KnowledgeGraphService:
             logger.info("跳过知识图谱提取：429 冷却窗口中")
             return self._result(ok=False, retryable=True, reason="rate_limited_cooldown")
 
-        prompt = f"""
-你是一个高度格式化的知识抽取引擎。必须直接输出 JSON 对象，绝对禁止包含任何 markdown 代码块标记(如 ```json) 或 <think> 标签。
-如果内容太短或无明显实体，必须返回 {{"entities":[], "relations":[]}}。
-允许的实体类型: file, function, concept, error
-允许的关系类型: modifies, depends_on, fixes
-
-输出必须符合以下结构：
-{{
-  "entities": [{{"name": "名字", "type": "concept"}}],
-  "relations": [{{"source": "源", "target": "目标", "type": "depends_on"}}]
-}}
-
-提取内容：
-{message.content[:2000]}
-"""
+        prompt = (
+            "你是一个高度格式化的知识抽取引擎。必须直接输出 JSON 对象，绝对禁止包含任何 markdown 代码块标记或 <think> 标签。\n"
+            '如果内容太短或无明显实体，必须返回 {"entities":[], "relations":[]}。\n'
+            "允许的实体类型: file, function, concept, error\n"
+            "允许的关系类型: modifies, depends_on, fixes, exemplifies(示例/例如), prefers_over(偏好/选择), contradicts(矛盾/反驳), reinforces(强化/支持), evolved_into(演化为), invalidated_by(被取代/失效), leads_to(导致), derived_from(源自), part_of(属于/部分)\n\n"
+            "关系类型使用说明：\n"
+            '- exemplifies: A 是 B 的示例 ("postgres exemplifies relational_db")\n'
+            '- prefers_over: A 被选择超过 B ("chose_postgres prefers_over mongodb")\n'
+            '- contradicts: A 与 B 矛盾 ("old_approach contradicts new_data")\n'
+            '- reinforces: A 强化 B ("backup_plan reinforces reliability")\n'
+            '- evolved_into: A 演化为 B ("prototype evolved_into production")\n'
+            '- invalidated_by: A 被 B 取代 ("cached_result invalidated_by new_data")\n'
+            '- leads_to: A 导致 B ("memory_leak leads_to crash")\n'
+            '- derived_from: A 来源于 B ("config derived_from template")\n'
+            '- part_of: A 是 B 的一部分 ("module part_of system")\n\n'
+            '输出格式：{"entities": [{"name": "名字", "type": "concept"}], '
+            '"relations": [{"source": "源", "target": "目标", "type": "depends_on"}]}\n\n'
+            f"提取内容：\n{message.content[:2000]}"
+        )
         try:
             reply, _ = await chat_completion([
                 {"role": "system", "content": "你只能输出一个 JSON 对象，不能输出解释、markdown、<think> 或额外文本。"},

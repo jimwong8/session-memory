@@ -151,6 +151,41 @@
           <div id="global-search-meta" class="text-xs text-gray-500"></div>
           <div id="global-search-results" class="space-y-4"></div>
         </section>
+<!-- Bridge Discovery -->
+        <section id="bridge" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <h2 class="text-xl font-semibold text-gray-900">Bridge Discovery</h2>
+          <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-xl space-y-2">
+            <div class="font-semibold">Multi-Hop Bridge Search</div>
+            <div class="text-xs text-gray-600">Enter seed message IDs to find bridging memories via graph traversal.</div>
+            <div class="grid grid-cols-2 gap-2">
+              <input id="bridge-seed-1" placeholder="Seed message ID 1" class="px-2 py-1 text-xs border rounded"/>
+              <input id="bridge-seed-2" placeholder="Seed message ID 2 (optional)" class="px-2 py-1 text-xs border rounded"/>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <input id="bridge-hops" type="number" value="2" min="1" max="3" placeholder="Max hops" class="px-2 py-1 text-xs border rounded"/>
+              <input id="bridge-limit" type="number" value="5" min="1" max="50" placeholder="Limit" class="px-2 py-1 text-xs border rounded"/>
+              <button id="bridge-search" class="px-3 py-1.5 text-xs rounded bg-indigo-600 text-white">Search Bridges</button>
+            </div>
+          </div>
+          <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl space-y-2">
+            <div class="font-semibold">Entity Expansion</div>
+            <div class="text-xs text-gray-600">Extract entities from seed messages, find related memories.</div>
+            <div class="grid grid-cols-2 gap-2">
+              <input id="expand-seed-1" placeholder="Seed message ID" class="px-2 py-1 text-xs border rounded"/>
+              <input id="expand-entity-limit" type="number" value="5" min="1" max="20" placeholder="Limit per entity" class="px-2 py-1 text-xs border rounded"/>
+            </div>
+            <button id="expand-search" class="px-3 py-1.5 text-xs rounded bg-purple-600 text-white">Expand by Entity</button>
+          </div>
+          <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-2">
+            <div class="font-semibold">Query Decomposition</div>
+            <div class="text-xs text-gray-600">Break complex queries into entity+topic sub-queries.</div>
+            <div class="flex gap-2">
+              <input id="decompose-query" placeholder="Would Caroline pursue writing?" class="flex-1 px-2 py-1 text-xs border rounded"/>
+              <button id="decompose-search" class="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white">Decompose</button>
+            </div>
+          </div>
+          <div id="bridge-results" class="space-y-3 max-h-[50vh] overflow-y-auto"></div>
+        </section>
 <!-- KG Graph -->
         <section id="kg-graph" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
           <h2 class="text-xl font-semibold text-gray-900">Knowledge Graph</h2>
@@ -1209,12 +1244,121 @@ var dh=document.getElementById('selt-check-deeph');if(dh){dh.addEventListener('c
 var IS_DARK=false;function _ad(e){IS_DARK=e;document.body.classList.toggle('dark',e);try{localStorage.setItem('sm-dark',e?'1':'0');}catch(ex){}var b=document.getElementById('dark-toggle');if(b)b.textContent=e?'Lgt':'Dark';}
 try{var sv=localStorage.getItem('sm-dark');if(sv==='1')_ad(true);else if(sv==='0')_ad(false);else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)_ad(true);}catch(e){}
 var _dt=document.getElementById('dark-toggle');if(_dt){_dt.addEventListener('click',function(){_ad(!IS_DARK);});_ad(IS_DARK);}
+
+/* Bridge Discovery */
+var _bridgeSearch = document.getElementById('bridge-search');
+if (_bridgeSearch) {
+  _bridgeSearch.addEventListener('click', function () {
+    var seed1 = document.getElementById('bridge-seed-1').value.trim();
+    var seed2 = document.getElementById('bridge-seed-2').value.trim();
+    var hops = document.getElementById('bridge-hops').value || 2;
+    var limit = document.getElementById('bridge-limit').value || 5;
+    if (!seed1) { alert('Enter seed message ID'); return; }
+    var seeds = [seed1];
+    if (seed2) seeds.push(seed2);
+    var resultsDiv = document.getElementById('bridge-results');
+    resultsDiv.innerHTML = '<div class="text-sm text-gray-500">Searching bridges...</div>';
+    fetch('/api/v1/recall/bridge', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({seed_message_ids: seeds, max_hops: parseInt(hops), expansion_limit: parseInt(limit)})
+    }).then(function(r){return r.json()}).then(function(d) {
+      var html = '';
+      if (d.bridges && d.bridges.length > 0) {
+        for (var i = 0; i < d.bridges.length; i++) {
+          var b = d.bridges[i];
+          html += '<div class="bg-white border border-indigo-200 rounded-lg p-3 space-y-1">';
+          html += '<div class="flex items-center justify-between"><span class="text-xs font-medium text-indigo-600">Score: ' + b.score.toFixed(2) + '</span><span class="text-xs text-gray-400">' + (b.timestamp||'').slice(0,10) + '</span></div>';
+          html += '<div class="text-xs text-gray-700 line-clamp-2">' + (b.content||'').slice(0,200) + '</div>';
+          if (b.relation_types && b.relation_types.length > 0) {
+            html += '<div class="flex gap-1 mt-1"><span class="text-xs text-gray-500">Relations:</span>';
+            for (var j = 0; j < b.relation_types.length; j++) html += '<span class="px-1.5 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded">' + b.relation_types[j] + '</span>';
+            html += '</div>';
+          }
+          if (b.entity_names && b.entity_names.length > 0) {
+            html += '<div class="flex gap-1 mt-1"><span class="text-xs text-gray-500">Entities:</span>';
+            for (var k = 0; k < b.entity_names.length; k++) html += '<span class="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">' + b.entity_names[k] + '</span>';
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+      } else {
+        html = '<div class="text-sm text-gray-500">No bridges found. Try seeds with richer KG connections.</div>';
+      }
+      resultsDiv.innerHTML = html;
+    }).catch(function(e){resultsDiv.innerHTML = '<div class="text-sm text-red-500">Error: ' + e.message + '</div>';});
+  });
+}
+
+var _expandSearch = document.getElementById('expand-search');
+if (_expandSearch) {
+  _expandSearch.addEventListener('click', function () {
+    var seed1 = document.getElementById('expand-seed-1').value.trim();
+    var limit = document.getElementById('expand-entity-limit').value || 5;
+    if (!seed1) { alert('Enter seed message ID'); return; }
+    var resultsDiv = document.getElementById('bridge-results');
+    resultsDiv.innerHTML = '<div class="text-sm text-gray-500">Expanding...</div>';
+    fetch('/api/v1/recall/expand-entities', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({seed_message_ids: [seed1], limit_per_entity: parseInt(limit), total_limit: parseInt(limit)})
+    }).then(function(r){return r.json()}).then(function(d) {
+      var html = '';
+      if (d.expansions && d.expansions.length > 0) {
+        for (var i = 0; i < d.expansions.length; i++) {
+          var e = d.expansions[i];
+          html += '<div class="bg-white border border-purple-200 rounded-lg p-3 space-y-1">';
+          html += '<div class="flex items-center justify-between"><span class="text-xs font-medium text-purple-600">Score: ' + e.score.toFixed(2) + '</span><span class="text-xs text-gray-400">' + (e.timestamp||'').slice(0,10) + '</span></div>';
+          html += '<div class="text-xs text-gray-700 line-clamp-2">' + (e.content||'').slice(0,200) + '</div>';
+          if (e.matched_entity) html += '<div class="mt-1"><span class="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">Entity: ' + e.matched_entity + '</span></div>';
+          html += '</div>';
+        }
+      } else { html = '<div class="text-sm text-gray-500">No expansions found.</div>'; }
+      resultsDiv.innerHTML = html;
+    }).catch(function(e){resultsDiv.innerHTML = '<div class="text-sm text-red-500">Error: ' + e.message + '</div>';});
+  });
+}
+
+var _decomposeSearch = document.getElementById('decompose-search');
+if (_decomposeSearch) {
+  _decomposeSearch.addEventListener('click', function () {
+    var query = document.getElementById('decompose-query').value.trim();
+    if (!query) { alert('Enter a query'); return; }
+    var resultsDiv = document.getElementById('bridge-results');
+    resultsDiv.innerHTML = '<div class="text-sm text-gray-500">Decomposing...</div>';
+    fetch('/api/v1/recall/decompose', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: query})
+    }).then(function(r){return r.json()}).then(function(d) {
+      var html = '<div class="bg-white border border-emerald-200 rounded-lg p-3 space-y-2">';
+      html += '<div class="text-xs text-gray-500">Original: <span class="text-gray-700 font-medium">' + d.original_query + '</span></div>';
+      if (d.decomposed_queries && d.decomposed_queries.length > 0) {
+        html += '<div class="flex flex-wrap gap-1"><span class="text-xs text-gray-500">Sub-queries:</span>';
+        for (var i = 0; i < d.decomposed_queries.length; i++) html += '<span class="px-1.5 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded cursor-pointer" onclick="document.getElementById('decompose-query').value='' + d.decomposed_queries[i] + ''">' + d.decomposed_queries[i] + '</span>';
+        html += '</div>';
+      }
+      if (d.entities_found && d.entities_found.length > 0) {
+        html += '<div class="flex gap-1"><span class="text-xs text-gray-500">Entities:</span>';
+        for (var j = 0; j < d.entities_found.length; j++) html += '<span class="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">' + d.entities_found[j] + '</span>';
+        html += '</div>';
+      }
+      if (d.topics_found && d.topics_found.length > 0) {
+        html += '<div class="flex gap-1"><span class="text-xs text-gray-500">Topics:</span>';
+        for (var k = 0; k < d.topics_found.length; k++) html += '<span class="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded">' + d.topics_found[k] + '</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+      resultsDiv.innerHTML = html;
+    }).catch(function(e){resultsDiv.innerHTML = '<div class="text-sm text-red-500">Error: ' + e.message + '</div>';});
+  });
+}
 /* P6 Keyboard */
 document.addEventListener('keydown',function(e){
-  var TAB_KEYS={'Digit1':'#overview','Digit2':'#search','Digit3':'#resume','Digit4':'#sessions','Digit5':'#self-check','Digit6':'#global-search','Digit7':'#kg-graph','Digit8':'#admin'};
+  var TAB_KEYS={'Digit1':'#overview','Digit2':'#search','Digit3':'#resume','Digit4':'#sessions','Digit5':'#self-check','Digit6':'#global-search','Digit7':'#bridge','Digit8':'#kg-graph','Digit9':'#admin'};
   if(e.altKey&&TAB_KEYS[e.code]){e.preventDefault();var el=document.querySelector(TAB_KEYS[e.code]);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth'});}
   if(e.ctrlKey&&e.shiftKey&&e.key==='G'){e.preventDefault();_ad(!IS_DARK);}
-  if(e.key==='?'&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();alert('Shortcuts: Alt+1-8=Jump tabs | Ctrl+K=Search | Ctrl+Shift+G=Dark | ?=Help');}
+  if(e.key==='?'&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();alert('Shortcuts: Alt/1-9=Jump tabs | Ctrl+K=Search | Ctrl+Shift+G=Dark | ?=Help');}
 });
 console.log('[P1-P6] All enhancements loaded');
 })();
