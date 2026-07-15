@@ -30,7 +30,7 @@ def extract_kg(content):
         err_msg = str(e)
         if '429' in err_msg:
             print("Rate limited! Waiting 60s...", flush=True)
-            time.sleep(60)
+            time.sleep(15)
         return None
     return None
 
@@ -111,7 +111,7 @@ def main():
                 cur.execute("UPDATE messages SET metadata_json=%s WHERE id=%s", (json.dumps(metadata), msg['id']))
         
         print(f"Batch {batch}: {len(msgs)} processed | Total: {total}, success: {success}\n", flush=True)
-        time.sleep(12)
+        time.sleep(15)
 
     conn.close()
     print(f"Final: {total} processed, {success} kg saved, {failed} failed")
