@@ -1076,10 +1076,12 @@
             const primaryHits = Object.entries(windowHits).filter(([k]) => k.endsWith(`:${primaryModel}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0);
             const backupHits = Object.entries(windowHits).filter(([k]) => k.endsWith(`:${backupModel}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0);
             const tertiaryHits = value.tertiary_openai_model ? Object.entries(windowHits).filter(([k]) => k.endsWith(`:${value.tertiary_openai_model}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0) : 0;
-            const totalHits = primaryHits + backupHits + tertiaryHits;
+            const quaternaryHits = value.quaternary_openai_model ? Object.entries(windowHits).filter(([k]) => k.endsWith(`:${value.quaternary_openai_model}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0) : 0;
+            const totalHits = primaryHits + backupHits + tertiaryHits + quaternaryHits;
             const primaryPct = totalHits ? Math.round((primaryHits / totalHits) * 100) : 0;
             const backupPct = totalHits ? Math.round((backupHits / totalHits) * 100) : 0;
             const tertiaryPct = totalHits ? Math.round((tertiaryHits / totalHits) * 100) : 0;
+            const quaternaryPct = totalHits ? Math.round((quaternaryHits / totalHits) * 100) : 0;
             const renderMetricMap = (title, data) => {
                 const entries = Object.entries(data || {});
                 if (!entries.length) {
@@ -1137,6 +1139,15 @@
                                 </div>
                                 <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
                                     <div class="h-full bg-rose-500 rounded-full" style="width:${Math.max(tertiaryPct, totalHits ? 6 : 0)}%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                    <span class="font-medium text-amber-700">${escapeHtml(value.quaternary_openai_model || 'V4')}</span>
+                                    <span>${escapeHtml(String(quaternaryPct))}% · ${escapeHtml(String(quaternaryHits))}</span>
+                                </div>
+                                <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full bg-amber-500 rounded-full" style="width:${Math.max(quaternaryPct, totalHits ? 6 : 0)}%"></div>
                                 </div>
                             </div>
                         </div>
