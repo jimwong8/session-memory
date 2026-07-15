@@ -81,6 +81,14 @@
                     <span class="text-sm font-medium text-gray-700">Backup Summary（备援摘要模型）</span>
                     <input id="global-backup-summary-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 MiniMax-M2.5" />
                 </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Tertiary Chat（第三聊天模型）</span>
+                    <input id="global-tertiary-openai-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 KAT-Coder-Exp-72B-1010" />
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">Tertiary Summary（第三摘要模型）</span>
+                    <input id="global-tertiary-summary-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 KAT-Coder-Exp-72B-1010" />
+                </label>
                 <label class="block md:col-span-2 xl:col-span-1">
                     <span class="text-sm font-medium text-gray-700">Routing Mode（路由模式）</span>
                     <input id="global-routing-mode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="fallback / load_balance" />
@@ -219,6 +227,8 @@
                 document.getElementById('global-summary-model').value = data.value?.summary_model || '';
                 document.getElementById('global-backup-openai-model').value = data.value?.backup_openai_model || '';
                 document.getElementById('global-backup-summary-model').value = data.value?.backup_summary_model || '';
+                document.getElementById('global-tertiary-openai-model').value = data.value?.tertiary_openai_model || '';
+                document.getElementById('global-tertiary-summary-model').value = data.value?.tertiary_summary_model || '';
                 document.getElementById('global-routing-mode').value = data.value?.llm_routing_mode || 'fallback';
                 statusEl.textContent = '已加载当前默认模型配置';
             } catch (e) {
@@ -233,6 +243,8 @@
                 summary_model: document.getElementById('global-summary-model').value.trim(),
                 backup_openai_model: document.getElementById('global-backup-openai-model').value.trim(),
                 backup_summary_model: document.getElementById('global-backup-summary-model').value.trim(),
+                tertiary_openai_model: document.getElementById('global-tertiary-openai-model').value.trim(),
+                tertiary_summary_model: document.getElementById('global-tertiary-summary-model').value.trim(),
                 llm_routing_mode: document.getElementById('global-routing-mode').value.trim(),
             };
             try {
@@ -243,7 +255,8 @@
                     body: JSON.stringify(payload),
                 });
                 const data = await response.json();
-                statusEl.textContent = `已保存: ${data.value?.openai_model} / ${data.value?.summary_model} / backup=${data.value?.backup_openai_model || '-'} / mode=${data.value?.llm_routing_mode || 'fallback'}`;
+                const _t = data.value?.tertiary_openai_model || '-';
+                statusEl.textContent = `已保存: ${data.value?.openai_model} / backup=${data.value?.backup_openai_model || '-'} / tertiary=${_t} / mode=${data.value?.llm_routing_mode || 'fallback'}`;
             } catch (e) {
                 statusEl.textContent = `保存失败: ${e.message}`;
             }
@@ -1050,9 +1063,11 @@
             const backupModel = value.backup_openai_model || 'backup';
             const primaryHits = Object.entries(windowHits).filter(([k]) => k.endsWith(`:${primaryModel}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0);
             const backupHits = Object.entries(windowHits).filter(([k]) => k.endsWith(`:${backupModel}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0);
-            const totalHits = primaryHits + backupHits;
+            const tertiaryHits = value.tertiary_openai_model ? Object.entries(windowHits).filter(([k]) => k.endsWith(`:${value.tertiary_openai_model}`)).reduce((acc, [, v]) => acc + Number(v || 0), 0) : 0;
+            const totalHits = primaryHits + backupHits + tertiaryHits;
             const primaryPct = totalHits ? Math.round((primaryHits / totalHits) * 100) : 0;
             const backupPct = totalHits ? Math.round((backupHits / totalHits) * 100) : 0;
+            const tertiaryPct = totalHits ? Math.round((tertiaryHits / totalHits) * 100) : 0;
             const renderMetricMap = (title, data) => {
                 const entries = Object.entries(data || {});
                 if (!entries.length) {
@@ -1075,7 +1090,8 @@
                         <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Primary Summary</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.summary_model || '—')}</div></div>
                         <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Backup Chat</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.backup_openai_model || '—')}</div></div>
                         <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Backup Summary</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.backup_summary_model || '—')}</div></div>
-                        ${value.tertiary_openai_model ? '<div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Tertiary Chat</div><div class="font-semibold text-gray-900 break-all">'+escapeHtml(value.tertiary_openai_model)+'</div></div>' : ''}
+                    <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Tertiary Chat</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.tertiary_openai_model || '—')}</div></div>
+                    <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Tertiary Summary</div><div class="font-semibold text-gray-900 break-all">${escapeHtml(value.tertiary_summary_model || '—')}</div></div>
                     </div>
                     <div class="rounded-lg border border-gray-200 bg-white p-3"><div class="text-xs text-gray-500">Routing Mode</div><div class="font-semibold text-gray-900">${escapeHtml(value.llm_routing_mode || 'fallback')}</div></div>
                     <div class="rounded-lg border border-gray-200 bg-white p-3">
@@ -1100,6 +1116,15 @@
                                 </div>
                                 <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
                                     <div class="h-full bg-emerald-500 rounded-full" style="width:${Math.max(backupPct, totalHits ? 6 : 0)}%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                    <span class="font-medium text-rose-700">${escapeHtml(value.tertiary_openai_model || 'tertiary')}</span>
+                                    <span>${escapeHtml(String(tertiaryPct))}% · ${escapeHtml(String(tertiaryHits))}</span>
+                                </div>
+                                <div class="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full bg-rose-500 rounded-full" style="width:${Math.max(tertiaryPct, totalHits ? 6 : 0)}%"></div>
                                 </div>
                             </div>
                         </div>
