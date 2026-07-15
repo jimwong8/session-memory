@@ -78,6 +78,20 @@ def _tertiary_model_config() -> dict[str, str] | None:
     return None
 
 
+def _quaternary_model_config() -> dict[str, str] | None:
+    """V4-Flash model — uses primary API key."""
+    if not (settings.openai_api_key and settings.openai_base_url):
+        return None
+    m = getattr(settings, "quaternary_openai_model", None)
+    if not m:
+        m = "DeepSeek-V4-Flash"
+    return {
+        "api_key": settings.openai_api_key,
+        "base_url": settings.openai_base_url,
+        "openai_model": m,
+        "summary_model": getattr(settings, "quaternary_summary_model", None) or m,
+    }
+
 def _routing_mode() -> str:
     mode = (settings.llm_routing_mode or 'fallback').strip().lower()
     return mode if mode in {'fallback', 'load_balance'} else 'fallback'
@@ -108,6 +122,7 @@ def _select_route_for_task(task_type: str | None) -> list[dict] | None:
     primary = _primary_model_config()
     backup = _backup_model_config()
     tertiary = _tertiary_model_config()
+    quaternary = _quaternary_model_config()
     mode = getattr(settings, 'llm_routing_mode', 'fallback')
     preference = _TASK_ROUTE_MAP[task_type]
     if mode == 'load_balance':
@@ -117,6 +132,8 @@ def _select_route_for_task(task_type: str | None) -> list[dict] | None:
             routes.append(backup)
         if tertiary:
             routes.append(tertiary)
+        if quaternary:
+            routes.append(quaternary)
         return routes
     # fallback mode
     if preference == "backup" and backup:
@@ -200,6 +217,7 @@ def _route_text_configs(kind: Literal['chat', 'summary']) -> list[dict[str, str]
     primary = _primary_model_config()
     backup = _backup_model_config()
     tertiary = _tertiary_model_config()
+    quaternary = _quaternary_model_config()
     if not backup:
         return [primary]
     if _routing_mode() == 'load_balance':
@@ -208,6 +226,8 @@ def _route_text_configs(kind: Literal['chat', 'summary']) -> list[dict[str, str]
             configs.append(backup)
         if tertiary:
             configs.append(tertiary)
+        if quaternary:
+            configs.append(quaternary)
         n = len(configs)
         counter = _route_counters.get(kind)
         if counter is None:

@@ -89,6 +89,14 @@
                     <span class="text-sm font-medium text-gray-700">Tertiary Summary（第三摘要模型）</span>
                     <input id="global-tertiary-summary-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 KAT-Coder-Exp-72B-1010" />
                 </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">V4 Flash Chat（第四聊天模型）</span>
+                    <input id="global-quaternary-openai-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 DeepSeek-V4-Flash" />
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700">V4 Flash Summary（第四摘要模型）</span>
+                    <input id="global-quaternary-summary-model" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 DeepSeek-V4-Flash" />
+                </label>
                 <label class="block md:col-span-2 xl:col-span-1">
                     <span class="text-sm font-medium text-gray-700">Routing Mode（路由模式）</span>
                     <input id="global-routing-mode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="fallback / load_balance" />
@@ -229,6 +237,8 @@
                 document.getElementById('global-backup-summary-model').value = data.value?.backup_summary_model || '';
                 document.getElementById('global-tertiary-openai-model').value = data.value?.tertiary_openai_model || '';
                 document.getElementById('global-tertiary-summary-model').value = data.value?.tertiary_summary_model || '';
+                document.getElementById('global-quaternary-openai-model').value = data.value?.quaternary_openai_model || '';
+                document.getElementById('global-quaternary-summary-model').value = data.value?.quaternary_summary_model || '';
                 document.getElementById('global-routing-mode').value = data.value?.llm_routing_mode || 'fallback';
                 statusEl.textContent = '已加载当前默认模型配置';
             } catch (e) {
@@ -245,6 +255,8 @@
                 backup_summary_model: document.getElementById('global-backup-summary-model').value.trim(),
                 tertiary_openai_model: document.getElementById('global-tertiary-openai-model').value.trim(),
                 tertiary_summary_model: document.getElementById('global-tertiary-summary-model').value.trim(),
+                quaternary_openai_model: document.getElementById('global-quaternary-openai-model').value.trim(),
+                quaternary_summary_model: document.getElementById('global-quaternary-summary-model').value.trim(),
                 llm_routing_mode: document.getElementById('global-routing-mode').value.trim(),
             };
             try {

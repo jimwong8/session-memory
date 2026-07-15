@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     backup_summary_model: str = ""
     tertiary_openai_model: str = "KAT-Coder-Exp-72B-1010"
     tertiary_summary_model: str = "KAT-Coder-Exp-72B-1010"
+    quaternary_openai_model: str = "DeepSeek-V4-Flash"
+    quaternary_summary_model: str = "DeepSeek-V4-Flash"
     summary_trigger_count: int = 20
 
     max_context_tokens: int = 8000
