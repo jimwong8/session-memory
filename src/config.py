@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     enable_auto_summary: bool = False
     summary_model: str = "gpt-4o-mini"
     backup_summary_model: str = ""
+    tertiary_openai_model: str = "KAT-Coder-Exp-72B-1010"
+    tertiary_summary_model: str = "KAT-Coder-Exp-72B-1010"
     summary_trigger_count: int = 20
 
     max_context_tokens: int = 8000

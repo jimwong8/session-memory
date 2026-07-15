@@ -55,6 +55,29 @@ def _backup_model_config() -> dict[str, str] | None:
     }
 
 
+def _tertiary_model_config() -> dict[str, str] | None:
+    """Tertiary model (KAT-Coder) — uses backup API key."""
+    tertiary_model = getattr(settings, "tertiary_openai_model", None)
+    if not tertiary_model:
+        tertiary_model = "KAT-Coder-Exp-72B-1010"
+    if not (settings.backup_openai_api_key and settings.backup_openai_base_url):
+        return None
+    return {
+        "api_key": settings.backup_openai_api_key,
+        "base_url": settings.backup_openai_base_url,
+        "openai_model": tertiary_model,
+        "summary_model": getattr(settings, "tertiary_summary_model", None) or tertiary_model,
+    }
+    if settings.backup_openai_api_key and settings.backup_openai_base_url:
+        return {
+            'api_key': settings.backup_openai_api_key,
+            'base_url': settings.backup_openai_base_url,
+            'openai_model': _cached_tertiary_model,
+            'summary_model': getattr(settings, 'tertiary_summary_model', None) or _cached_tertiary_model,
+        }
+    return None
+
+
 def _routing_mode() -> str:
     mode = (settings.llm_routing_mode or 'fallback').strip().lower()
     return mode if mode in {'fallback', 'load_balance'} else 'fallback'
@@ -84,9 +107,24 @@ def _select_route_for_task(task_type: str | None) -> list[dict] | None:
         return None
     primary = _primary_model_config()
     backup = _backup_model_config()
+    tertiary = _tertiary_model_config()
+    mode = getattr(settings, 'llm_routing_mode', 'fallback')
     preference = _TASK_ROUTE_MAP[task_type]
+    if mode == 'load_balance':
+        # load_balance: round-robin across all 3 models
+        routes = [primary]
+        if backup:
+            routes.append(backup)
+        if tertiary:
+            routes.append(tertiary)
+        return routes
+    # fallback mode
     if preference == "backup" and backup:
+        if tertiary:
+            return [backup, tertiary, primary]
         return [backup, primary]
+    if tertiary:
+        return [primary, tertiary]
     return [primary]
 
 
@@ -161,17 +199,25 @@ async def _record_route_success_async(route: dict[str, str], *, operation: str) 
 def _route_text_configs(kind: Literal['chat', 'summary']) -> list[dict[str, str]]:
     primary = _primary_model_config()
     backup = _backup_model_config()
+    tertiary = _tertiary_model_config()
     if not backup:
         return [primary]
     if _routing_mode() == 'load_balance':
-        configs = [primary, backup]
+        configs = [primary]
+        if backup:
+            configs.append(backup)
+        if tertiary:
+            configs.append(tertiary)
+        n = len(configs)
         counter = _route_counters.get(kind)
         if counter is None:
-            counter = cycle([0, 1])
+            counter = cycle(range(n))
             _route_counters[kind] = counter
         first_idx = next(counter)
-        second_idx = 1 - first_idx
-        return [configs[first_idx], configs[second_idx]]
+        route = [configs[first_idx]]
+        for i in range(1, n):
+            route.append(configs[(first_idx + i) % n])
+        return route
     return [primary, backup]
 
 
