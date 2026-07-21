@@ -138,7 +138,7 @@ async def health_check(deep: bool = Query(False)):
         checks["redis"] = {"status": "error", "error": str(exc)}
 
     try:
-        embedding = await asyncio.wait_for(create_embedding("health check"), timeout=3)
+        embedding = await asyncio.wait_for(create_embedding("health check"), timeout=10)
         valid = isinstance(embedding, list) and len(embedding) == settings.embedding_dimensions
         if valid:
             checks["embedding"] = {

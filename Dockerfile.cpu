@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ libpq-dev curl openssh-client sshpass && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+
+RUN pip install --no-cache-dir protobuf==5.28.3
+
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple fastapi==0.115.0 uvicorn[standard]==0.32.0 pydantic==2.9.0 pydantic-settings==2.5.0 sqlalchemy==2.0.35 asyncpg==0.29.0 alembic==1.13.3 pgvector==0.3.5 redis==5.1.1 hiredis==3.0.0 sentence-transformers==3.3.1 tiktoken==0.8.0 prometheus-client==0.21.0 python-dotenv==1.0.1 httpx==0.27.2 openai==1.57.4 psycopg2-binary==2.9.12
+
+COPY src/ src/
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8000
+CMD ["/entrypoint.sh"]

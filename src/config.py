@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     embedding_provider: str = "local"
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    embedding_dimensions: int = 384
+    embedding_dimensions: int = 1024
 
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"

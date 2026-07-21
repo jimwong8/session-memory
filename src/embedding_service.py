@@ -1,102 +1,49 @@
-"""嵌入服务 - 支持本地和OpenAI两种方式"""
-
-import logging
-from typing import Optional
-
-from src.config import settings
+"""嵌入服务 - stella 1024"""
+import os, torch, logging, asyncio, json
 
 logger = logging.getLogger(__name__)
-
-# 全局模型实例
-_local_model: Optional[object] = None
-_openai_client: Optional[object] = None
-
+_local_model = None
+_local_tokenizer = None
 
 def _get_local_model():
-    """获取本地嵌入模型(懒加载)"""
-    global _local_model
+    global _local_model, _local_tokenizer
     if _local_model is None:
-        from sentence_transformers import SentenceTransformer
-        logger.info(f"加载本地嵌入模型: {settings.embedding_model}")
-        _local_model = SentenceTransformer(settings.embedding_model)
-        logger.info("本地嵌入模型加载完成")
-    return _local_model
+        from src.config import settings
+        from transformers import BertTokenizer, BertModel, BertConfig
+        from safetensors.torch import load_file as sf_load
 
+        path = settings.embedding_model
+        logger.info(f"Loading model from: {path}")
+        _local_tokenizer = BertTokenizer(vocab_file=os.path.join(path, "vocab.txt"))
+        state = sf_load(os.path.join(path, "model.safetensors"))
+        state.pop("embeddings.position_ids", None)
 
-def _get_openai_client():
-    """获取OpenAI客户端(懒加载)"""
-    global _openai_client
-    if _openai_client is None:
-        from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-        )
-    return _openai_client
+        with open(os.path.join(path, "config.json")) as f:
+            cfg_dict = json.load(f)
+        config = BertConfig(**cfg_dict)
+        _local_model = BertModel(config)
+        _local_model.load_state_dict(state, strict=False)
+        _local_model.eval()
+        logger.info(f"Loaded: dim={_local_model.config.hidden_size}")
+    return _local_model, _local_tokenizer
 
+def _encode(texts):
+    model, tok = _get_local_model()
+    if isinstance(texts, str):
+        texts = [texts]
+    inputs = tok(texts, padding=True, truncation=True, return_tensors="pt", max_length=512)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    mask = inputs["attention_mask"].unsqueeze(-1).expand(outputs.last_hidden_state.size()).float()
+    embs = torch.sum(outputs.last_hidden_state * mask, 1) / torch.clamp(mask.sum(1), min=1e-9)
+    results = [embs[i].tolist() for i in range(len(texts))]
+    return results[0] if len(texts) == 1 else results
 
-async def warmup_embedding() -> None:
-    """启动时预热嵌入模型或客户端，避免首个 health 检查冷启动超时"""
-    if settings.embedding_provider == "local":
-        _get_local_model()
-    elif settings.embedding_provider == "openai":
-        _get_openai_client()
+async def create_embedding(text: str):
+    return _encode(text)
 
+async def create_embeddings_batch(texts: list[str]):
+    return _encode(texts)
 
-async def create_embedding(text: str) -> list[float]:
-    """生成文本的向量嵌入"""
-    if settings.embedding_provider == "local":
-        return _create_local_embedding(text)
-    elif settings.embedding_provider == "openai":
-        return await _create_openai_embedding(text)
-    else:
-        raise ValueError(f"不支持的嵌入提供商: {settings.embedding_provider}")
-
-
-async def create_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    """批量生成向量嵌入"""
-    if not texts:
-        return []
-
-    if settings.embedding_provider == "local":
-        return _create_local_embeddings_batch(texts)
-    elif settings.embedding_provider == "openai":
-        return await _create_openai_embeddings_batch(texts)
-    else:
-        raise ValueError(f"不支持的嵌入提供商: {settings.embedding_provider}")
-
-
-def _create_local_embedding(text: str) -> list[float]:
-    """使用本地模型生成嵌入"""
-    model = _get_local_model()
-    embedding = model.encode(text, convert_to_numpy=True)
-    return embedding.tolist()
-
-
-def _create_local_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    """使用本地模型批量生成嵌入"""
-    model = _get_local_model()
-    embeddings = model.encode(texts, convert_to_numpy=True)
-    return [emb.tolist() for emb in embeddings]
-
-
-async def _create_openai_embedding(text: str) -> list[float]:
-    """使用OpenAI API生成嵌入"""
-    client = _get_openai_client()
-    response = await client.embeddings.create(
-        model=settings.embedding_model,
-        input=text,
-        dimensions=settings.embedding_dimensions,
-    )
-    return response.data[0].embedding
-
-
-async def _create_openai_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    """使用OpenAI API批量生成嵌入"""
-    client = _get_openai_client()
-    response = await client.embeddings.create(
-        model=settings.embedding_model,
-        input=texts,
-        dimensions=settings.embedding_dimensions,
-    )
-    return [item.embedding for item in response.data]
+async def warmup_embedding():
+    _get_local_model()

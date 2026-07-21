@@ -14,6 +14,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./scripts:/app/scripts
+      - ./data/models:/models
       - ./logs:/app/logs
       - ./data/memory:/app/data/memory
       - ./data/hf_cache:/app/data/hf_cache
@@ -23,17 +24,17 @@ services:
       test: [CMD, curl, -f, http://localhost:8000/health]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 90s
     deploy:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 16G
         reservations:
           cpus: '0.5'
           memory: 512M
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
 
 
   backfill:
@@ -51,6 +52,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./scripts:/app/scripts
+      - ./data/models:/models
       - ./logs:/app/logs
     restart: "no"
     command: python /app/scripts/backfill_embeddings.py
