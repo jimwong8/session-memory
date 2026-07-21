@@ -4,14 +4,14 @@
 
 ## 快速开始
 
-### 服务端 (10.100.1.13)
+### 服务端 (100.77.184.40)
 
 ```bash
 cd ~/session-memory
 docker-compose up -d
 ```
 
-### 客户端 (10.100.1.13, 10.100.1.18)
+### 客户端 (100.77.184.40, 10.100.1.18)
 
 SDK和Hook已自动部署到 ~/.config/opencode/
 
@@ -36,7 +36,7 @@ SDK和Hook已自动部署到 ~/.config/opencode/
 ## 文档
 
 - [部署文档](./DEPLOYMENT.md) - 完整部署指南
-- [API文档](http://10.100.1.13:8000/docs) - Swagger UI
+- [API文档](http://100.77.184.40:8000/docs) - Swagger UI
 
 ## 服务状态
 
@@ -45,7 +45,7 @@ SDK和Hook已自动部署到 ~/.config/opencode/
 docker ps | grep session_memory
 
 # 健康检查
-curl http://10.100.1.13:8000/health
+curl http://100.77.184.40:8000/health
 
 # 查看日志
 docker logs session_memory_api -f
@@ -85,7 +85,7 @@ docker logs session_memory_api -f
                              │ HTTP API
                              ▼
 ┌─────────────────────────────────────────────────────────┐
-│              服务端 (10.100.1.13)                        │
+│              服务端 (100.77.184.40)                        │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │  FastAPI (8000)                                  │   │
 │  │  - 会话管理                                       │   │

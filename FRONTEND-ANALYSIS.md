@@ -1,6 +1,6 @@
 # Session Memory 系统前后端功能一致性分析报告
 
-> 日期: 2026-07-12 | 后端: http://10.100.1.13:8000 | 前端: / (Dashboard) + /app (Session Center)
+> 日期: 2026-07-12 | 后端: http://100.77.184.40:8000 | 前端: / (Dashboard) + /app (Session Center)
 
 ---
 

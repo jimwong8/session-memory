@@ -6,9 +6,9 @@
 
 ## 服务入口
 
-- API: `http://10.100.1.13:8000`
-- Prometheus: `http://10.100.1.13:9090`
-- Grafana: `http://10.100.1.13:3000`
+- API: `http://100.77.184.40:8000`
+- Prometheus: `http://100.77.184.40:9090`
+- Grafana: `http://100.77.184.40:3000`
 - Grafana 默认账号: `admin / admin`
 
 ## 关键能力现状
