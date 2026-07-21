@@ -2040,3 +2040,70 @@ async def decompose_query(data: dict):
 
 
 
+
+@router.get("/search/weighted")
+async def search_weighted(query: str = Query(...), limit: int = Query(10, ge=1, le=50)):
+    """Vector search with length penalty"""
+    import psycopg2
+    from src.embedding_service import create_embedding
+    query_emb = await create_embedding(query)
+    conn = psycopg2.connect(host="postgres", dbname="session_memory", user="postgres", password="postgres")
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT m.id, m.content, m.role, m.session_id,
+               COALESCE(1.0 - (m.embedding <=> %s::vector), 0.0) AS similarity,
+               CASE WHEN length(m.content) > 2000 THEN 0.3 ELSE 1.0 END AS length_penalty
+        FROM messages m WHERE m.embedding IS NOT NULL AND m.role IN ('user','assistant')
+        ORDER BY m.embedding <=> %s::vector LIMIT %s""",
+        (str(query_emb), str(query_emb), limit * 5))
+    seen = {}
+    results = []
+    for row in cur.fetchall():
+        sid = str(row[3])
+        if sid not in seen:
+            seen[sid] = True
+            results.append({
+                "id": str(row[0]), "content": row[1], "role": row[2],
+                "session_id": sid,
+                "score": float(row[4]) * float(row[5]),
+                "similarity": float(row[4])})
+        if len(results) >= limit: break
+    conn.close()
+    return results
+
+
+@router.post("/events")
+async def ingest_event(data: dict, db: AsyncSession = Depends(get_db)):
+    """接收终端钩子事件，写入会话消息"""
+    import uuid
+    from src.schemas import MessageCreate
+
+    sid = data.get("session_id")
+    if not sid:
+        raise HTTPException(status_code=400, detail="缺少 session_id")
+    try:
+        session_uuid = uuid.UUID(sid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效 session_id")
+
+    svc = SessionService(db)
+    session, _ = await svc.get_session(db, session_uuid)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    content = data.get("content", {})
+    user_msg = content.get("user", "")
+    assistant_msg = content.get("assistant", "")
+
+    results = []
+    if user_msg:
+        m = await svc.add_message(session_uuid, MessageCreate(role="user", content=user_msg[:2000]), generate_embedding=False)
+        results.append(str(m.id))
+    if assistant_msg:
+        m = await svc.add_message(session_uuid, MessageCreate(role="assistant", content=assistant_msg[:2000]), generate_embedding=False)
+        results.append(str(m.id))
+
+    if not results:
+        raise HTTPException(status_code=400, detail="消息内容为空")
+
+    return {"status": "ok", "message_ids": results, "count": len(results)}
