@@ -1,201 +1,311 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Session Memory 统一仪表盘</title>
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
-.status-ok{color:#16a34a;background:#f0fdf4}.status-warn{color:#ca8a04;background:#fef9c3}.status-err{color:#dc2626;background:#fef2f2}
-.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:12px}
-.bar{height:20px;border-radius:4px;transition:width .5s}
-.tab-btn{padding:8px 16px;border-radius:8px 8px 0 0;cursor:pointer;font-size:14px;border:none;background:#f1f5f9;color:#64748b}
-.tab-btn.active{background:#fff;color:#1e293b;font-weight:600;box-shadow:0 -2px 8px rgba(0,0,0,.05)}
-.tab-panel{display:none}.tab-panel.active{display:block}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
+.container{max-width:1200px;margin:0 auto;padding:16px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.header h1{font-size:22px;font-weight:700}
+.header-right{display:flex;align-items:center;gap:12px;font-size:13px;color:#64748b}
+.header-right button{background:#3b82f6;color:#fff;border:none;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:12px}
+.tabs{display:flex;gap:2px;margin-bottom:0}
+.tab-btn{padding:8px 16px;cursor:pointer;font-size:13px;border:none;background:#e2e8f0;color:#64748b;border-radius:8px 8px 0 0;transition:all .2s}
+.tab-btn.active{background:#fff;color:#1e293b;font-weight:600;box-shadow:0 -2px 6px rgba(0,0,0,.05)}
+.tab-content{display:none;padding-top:16px}
+.tab-content.active{display:block}
+.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:12px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:8px;color:#334155}
+.grid{display:grid;gap:12px;margin-bottom:12px}
+.grid2{grid-template-columns:repeat(2,1fr)}
+.grid3{grid-template-columns:repeat(3,1fr)}
+.grid4{grid-template-columns:repeat(4,1fr)}
+.grid5{grid-template-columns:repeat(5,1fr)}
+.stat{background:#fff;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.stat-label{font-size:11px;color:#94a3b8}
+.stat-value{font-size:24px;font-weight:700;margin-top:4px}
+.text-green{color:#16a34a}.text-red{color:#dc2626}.text-yellow{color:#ca8a04}.text-blue{color:#2563eb}.text-indigo{color:#4f46e5}
+.text-sm{font-size:13px}.text-xs{font-size:11px}.text-gray{color:#64748b}
+.bar-bg{background:#e2e8f0;border-radius:10px;height:16px;overflow:hidden}
+.bar-fg{background:#22c55e;height:100%;border-radius:10px;transition:width .6s}
+.btn{display:inline-block;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px;margin:3px}
+.btn-blue{background:#dbeafe;color:#1d4ed8}
+.btn-red{background:#fee2e2;color:#dc2626}
+.btn-yellow{background:#fef9c3;color:#a16207}
+.btn-gray{background:#f1f5f9;color:#475569}
+.btn:hover{filter:brightness(.95)}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;margin:2px}
+.tag-yellow{background:#fef9c3;color:#a16207}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:8px 6px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0}
+td{padding:8px 6px;font-size:13px;border-bottom:1px solid #f1f5f9}
+input[type=text]{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:14px;outline:none}
+input[type=text]:focus{border-color:#3b82f6}
+.result-item{border-bottom:1px solid #f1f5f9;padding:10px 0}
+.result-meta{font-size:11px;color:#94a3b8;margin-bottom:2px}
+.result-content{font-size:13px;color:#334155}
+#kgActionResult{font-size:11px;color:#64748b;margin-top:8px}
 </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-<div class="max-w-7xl mx-auto px-4 py-4">
-  <div class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-bold text-gray-800">Session Memory 统一仪表盘</h1>
-    <div class="flex items-center gap-3 text-sm text-gray-500">
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Session Memory 统一仪表盘</h1>
+    <div class="header-right">
       <span id="updateTime">加载中...</span>
-      <label class="flex items-center gap-1"><input type="checkbox" id="autoRefresh" checked onchange="toggleRefresh()"> 自动刷新</label>
-      <button onclick="loadAll()" class="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs">刷新</button>
+      <label><input type="checkbox" id="autoRefresh" checked> 自动刷新</label>
+      <button onclick="loadAll()">刷新</button>
     </div>
   </div>
 
-  <!-- Tab Navigation -->
-  <div class="flex gap-1 mb-0" id="tabNav">
-    <button class="tab-btn active" onclick="switchTab('overview')">总览</button>
-    <button class="tab-btn" onclick="switchTab('kg')">KG 运维</button>
-    <button class="tab-btn" onclick="switchTab('sessions')">会话</button>
-    <button class="tab-btn" onclick="switchTab('memory')">记忆</button>
-    <button class="tab-btn" onclick="switchTab('search')">搜索</button>
-    <button class="tab-btn" onclick="switchTab('llm')">LLM</button>
-    <button class="tab-btn" onclick="switchTab('events')">事件</button>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="overview">总览</button>
+    <button class="tab-btn" data-tab="kg">KG 运维</button>
+    <button class="tab-btn" data-tab="sessions">会话</button>
+    <button class="tab-btn" data-tab="memory">记忆</button>
+    <button class="tab-btn" data-tab="search">搜索</button>
+    <button class="tab-btn" data-tab="llm">LLM</button>
+    <button class="tab-btn" data-tab="events">事件</button>
   </div>
 
-  <!-- Tab: Overview -->
-  <div id="tab-overview" class="tab-panel active pt-4">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" id="healthCards"></div>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+  <div id="tab-overview" class="tab-content active">
+    <div class="grid grid4" id="healthCards"></div>
+    <div class="grid grid2">
       <div class="card" id="embeddingPanel"></div>
-      <div class="card" id="backfillPanel"></div>
+      <div class="card" id="backfillPanel"><span class="text-gray">加载中...</span></div>
     </div>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" id="quickStats"></div>
+    <div class="grid grid4" id="quickStats"></div>
+    <div class="card" id="alertsPanel"></div>
   </div>
 
-  <!-- Tab: KG -->
-  <div id="tab-kg" class="tab-panel pt-4">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" id="kgStats"></div>
-    <div class="card mb-3" id="kgActions"></div>
+  <div id="tab-kg" class="tab-content">
+    <div class="grid grid5" id="kgStats"></div>
+    <div class="card" id="kgActions"></div>
     <div class="card" id="kgQuality"></div>
   </div>
 
-  <!-- Tab: Sessions -->
-  <div id="tab-sessions" class="tab-panel pt-4">
-    <div class="card mb-3" id="sessionsPanel">加载中...</div>
+  <div id="tab-sessions" class="tab-content">
+    <div class="card" id="sessionsPanel"><span class="text-gray">点击标签加载...</span></div>
   </div>
 
-  <!-- Tab: Memory -->
-  <div id="tab-memory" class="tab-panel pt-4">
-    <div class="card mb-3" id="memoryPanel">加载中...</div>
+  <div id="tab-memory" class="tab-content">
+    <div class="card" id="memoryPanel"><span class="text-gray">点击标签加载...</span></div>
   </div>
 
-  <!-- Tab: Search -->
-  <div id="tab-search" class="tab-panel pt-4">
-    <div class="card mb-3" id="searchPanel">
-      <h3 class="font-semibold mb-2">全局搜索</h3>
-      <div class="flex gap-2 mb-3"><input id="searchQuery" class="flex-1 border rounded-lg px-3 py-2" placeholder="输入搜索词..."><button onclick="doSearch()" class="px-4 py-2 bg-blue-500 text-white rounded-lg">搜索</button></div>
+  <div id="tab-search" class="tab-content">
+    <div class="card">
+      <h3>全局向量搜索（带长度惩罚）</h3>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="searchQuery" placeholder="输入搜索词...">
+        <button class="btn btn-blue" onclick="doSearch()">搜索</button>
+      </div>
       <div id="searchResults"></div>
     </div>
   </div>
 
-  <!-- Tab: LLM -->
-  <div id="tab-llm" class="tab-panel pt-4">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3" id="llmPanels"></div>
+  <div id="tab-llm" class="tab-content">
+    <div class="grid grid2" id="llmPanels"></div>
   </div>
 
-  <!-- Tab: Events -->
-  <div id="tab-events" class="tab-panel pt-4">
-    <div class="card" id="eventsPanel">加载中...</div>
+  <div id="tab-events" class="tab-content">
+    <div class="card" id="eventsPanel"><span class="text-gray">加载中...</span></div>
   </div>
-
-  <!-- Alerts bar -->
-  <div id="alertsBar" class="fixed bottom-0 left-0 right-0 p-3 hidden"></div>
 </div>
+
 <script>
-const API = '/api/v1/admin/dashboard';
-let refreshTimer = null;
+var API = '/api/v1/admin/dashboard', refreshTimer, currentData;
 
-function toggleRefresh() {
-  if (document.getElementById('autoRefresh').checked) { refreshTimer = setInterval(loadAll, 15000); }
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.onclick = function() {
+    var name = this.getAttribute('data-tab');
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(p) { p.classList.remove('active'); });
+    this.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'sessions') loadSessions();
+    if (name === 'memory') loadMemory();
+  };
+});
+
+document.getElementById('autoRefresh').onchange = function() {
+  if (this.checked) { refreshTimer = setInterval(loadAll, 15000); }
   else { clearInterval(refreshTimer); }
-}
+};
 
-function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
+function sc(label, value, color) {
+  return '<div class="stat"><div class="stat-label">' + label + '</div><div class="stat-value' + (color ? ' ' + color : '') + '">' + value + '</div></div>';
 }
 
 async function loadAll() {
   try {
-    const r = await fetch(API); const d = await r.json();
+    var r = await fetch(API), d = await r.json();
+    currentData = d;
     document.getElementById('updateTime').textContent = new Date(d.generated_at).toLocaleString('zh-CN');
-    renderOverview(d); renderKG(d); renderLLM(d); renderEvents(d.raw_events || {});
+    renderOverview(d); renderKG(d); renderLLM(d);
+    renderEvents(d.raw_events || {}); renderAlerts(d);
   } catch(e) { console.error(e); }
 }
 
-function statCard(label, value, color) {
-  return '<div class="card text-center"><div class="text-xs text-gray-500">'+label+'</div><div class="text-2xl font-bold '+color+'">'+value+'</div></div>';
-}
-
 function renderOverview(d) {
-  const h = d.health || {}, kg = d.kg || {}, cap = d.capacity_snapshot || {}, cont = d.continuation || {};
+  var h = d.health || {}, cap = d.capacity_snapshot || {};
   document.getElementById('healthCards').innerHTML =
-    statCard('系统健康', (h.status==='ok'?'✅':'⚠️'), '') +
-    statCard('数据库', (h.db_counts?.sessions||0)+' 会话', 'text-blue-600') +
-    statCard('消息总数', (cap.total_messages||0), 'text-indigo-600') +
-    statCard('活跃会话', (cap.active_sessions||0), 'text-green-600');
+    sc('系统健康', h.status==='ok' ? '✅' : '⚠️', '') +
+    sc('数据库会话', (h.db_counts&&h.db_counts.sessions)||0, 'text-blue') +
+    sc('消息总数', cap.total_messages||0, 'text-indigo') +
+    sc('活跃会话', cap.active_sessions||0, 'text-green');
 
+  document.getElementById('embeddingPanel').innerHTML =
+    '<h3>嵌入模型</h3>' +
+    '<div class="text-sm">模型: /models/stella | 维度: 1024 | <b class="text-green">运行中</b></div>' +
+    '<div class="text-xs text-gray" style="margin-top:8px">pgvector &lt;=&gt; 余弦距离 | 长度 &gt;2000 字符降权70%</div>';
+
+  var kgOps = d.kg_ops || {};
+  var embedded = (cap.total_messages||0) - (kgOps.pending_total||0);
+  var pct = cap.total_messages ? Math.round(embedded / cap.total_messages * 100) : 0;
+  document.getElementById('backfillPanel').innerHTML =
+    '<h3>嵌入背填进度</h3>' +
+    '<div class="bar-bg"><div class="bar-fg" style="width:'+pct+'%"></div></div>' +
+    '<div class="text-xs text-gray" style="margin-top:4px">' + embedded + ' / ' + cap.total_messages + ' (' + pct + '%)</div>';
+
+  var kg = d.kg || {}, cont = d.continuation_metrics || {};
   document.getElementById('quickStats').innerHTML =
-    statCard('KG 成功', kg.kg_success||0, 'text-green-600') +
-    statCard('KG 待处理', d.kg_ops?.pending_total||0, 'text-yellow-600') +
-    statCard('KG 死信', d.kg_ops?.deadletter_total||0, 'text-red-600') +
-    statCard('续跑待办', cont.pending||0, 'text-gray-600');
-
-  document.getElementById('embeddingPanel').innerHTML = '<h3 class="font-semibold mb-2">嵌入模型</h3>' +
-    '<div class="text-sm text-gray-600">模型: /models/stella | 维度: 1024 | 状态: <span class="text-green-600 font-bold">运行中</span></div>' +
-    '<div class="mt-2 text-xs text-gray-400">向量搜索: pgvector <=> | 长度惩罚: >2000字符降权70%</div>';
-
-  // Backfill progress
-  fetch('/api/v1/search/weighted?query=health&limit=1').then(r=>r.json()).then(()=>{
-    const embedded = cap.total_messages - (d.kg_ops?.pending_total || 0);
-    const pct = cap.total_messages ? Math.round(embedded / cap.total_messages * 100) : 0;
-    document.getElementById('backfillPanel').innerHTML = '<h3 class="font-semibold mb-2">嵌入背填进度</h3>' +
-      '<div class="bg-gray-200 rounded-full h-4 mb-1"><div class="bar bg-green-500" style="width:'+pct+'%"></div></div>' +
-      '<div class="text-xs text-gray-500">'+embedded+' / '+cap.total_messages+' ('+pct+'%)</div>';
-  });
+    sc('KG 完成', kg.kg_success||0, 'text-green') +
+    sc('KG 待处理', kgOps.pending_total||0, 'text-yellow') +
+    sc('KG 死信', kgOps.deadletter_total||0, 'text-red') +
+    sc('续跑待办', cont.pending||0, 'text-gray');
 }
 
 function renderKG(d) {
-  const ops = d.kg_ops || {}, kg = d.kg || {};
+  var ops = d.kg_ops || {}, kg = d.kg || {};
   document.getElementById('kgStats').innerHTML =
-    statCard('待处理', ops.pending_total||0, 'text-yellow-600') +
-    statCard('运行中', ops.running_total||0, 'text-blue-600') +
-    statCard('已完成', ops.succeeded_total||0, 'text-green-600') +
-    statCard('死信', ops.deadletter_total||0, 'text-red-600');
+    sc('待处理', ops.pending_total||0, 'text-yellow') +
+    sc('可立即处理', ops.queue_ready_total||0, 'text-blue') +
+    sc('运行中', ops.running_total||0, '') +
+    sc('已完成', ops.succeeded_total||0, 'text-green') +
+    sc('死信', ops.deadletter_total||0, 'text-red');
 
-  document.getElementById('kgActions').innerHTML = '<h3 class="font-semibold mb-2">运维操作</h3><div class="flex flex-wrap gap-2">' +
-    ['run-kg-worker-once','requeue-kg-deadletters','repair-stuck-session','reconcile-continuation-metrics'].map(a =>
-      '<button onclick="kgAction(\''+a+'\')" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">'+a.replace(/-/g,' ')+'</button>'
-    ).join('') + '</div><div id="kgActionResult" class="mt-2 text-xs text-gray-500"></div>';
+  document.getElementById('kgActions').innerHTML =
+    '<h3>运维操作</h3><div>' +
+    '<button class="btn btn-blue" onclick="kgAction(\"run-kg-worker-once\")">执行 KG Worker</button>' +
+    '<button class="btn btn-red" onclick="kgAction(\"requeue-kg-deadletters\")">重入死信</button>' +
+    '<button class="btn btn-yellow" onclick="kgAction(\"repair-stuck-session\")">修复卡死会话</button>' +
+    '<button class="btn btn-gray" onclick="kgAction(\"reconcile-continuation-metrics\")">校准续跑指标</button>' +
+    '</div><div id="kgActionResult"></div>';
 
-  document.getElementById('kgQuality').innerHTML = '<h3 class="font-semibold mb-2">KG 质量</h3>' +
-    '<div class="text-sm">成功: '+ (kg.kg_success||0) +' | JSON失败: '+ (kg.kg_fail_json_extract||0) +' | 限流: '+ (kg.kg_fail_429||0) + '</div>' +
-    '<div class="mt-2"><div class="text-xs text-gray-500 mb-1">待处理原因</div>' +
-    (ops.pending_reasons||[]).map(r=>'<span class="inline-block bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs mr-1 mb-1">'+r.reason+': '+r.count+'</span>').join('') + '</div>';
+  var reasons = (ops.pending_reasons || []).map(function(r) {
+    return '<span class="tag tag-yellow">' + (r.reason||'无') + ': ' + r.count + '</span>';
+  }).join('');
+  document.getElementById('kgQuality').innerHTML =
+    '<h3>KG 质量</h3>' +
+    '<div class="text-sm">成功: <b class="text-green">' + (kg.kg_success||0) + '</b> | JSON失败: <b class="text-red">' + (kg.kg_fail_json_extract||0) + '</b> | 限流: <b class="text-yellow">' + (kg.kg_fail_429||0) + '</b></div>' +
+    '<div style="margin-top:8px"><div class="text-xs text-gray">待处理原因分布</div>' + reasons + '</div>' +
+    '<div class="text-xs text-gray" style="margin-top:8px">运行中 Worker: ' + ((ops.running_workers||[]).map(function(w){return w.worker_id+':'+w.count}).join(', ')||'无') + '</div>';
 }
 
 function kgAction(action) {
-  fetch('/api/v1/admin/ops/'+action, {method:'POST'}).then(r=>r.json()).then(j=>{
-    document.getElementById('kgActionResult').textContent = JSON.stringify(j);
+  var el = document.getElementById('kgActionResult');
+  el.textContent = '执行中...';
+  fetch('/api/v1/admin/ops/' + action, {method:'POST'}).then(function(r) { return r.json(); }).then(function(j) {
+    el.textContent = '✅ ' + JSON.stringify(j).substring(0,200);
+    setTimeout(loadAll, 2000);
+  }).catch(function(e) {
+    el.textContent = '❌ 错误: ' + e;
   });
 }
 
 function renderLLM(d) {
-  const m = d.llm_route_metrics || {}, cfg = d.model_config || {};
+  var m = d.llm_route_metrics || {};
+  var hits = m.window_hit_counts || {};
+  var hitSum = Object.values(m.hit_counts||{}).reduce(function(a,b){return a+b;}, 0);
+  var failSum = Object.values(m.fail_counts||{}).reduce(function(a,b){return a+b;}, 0);
+  var fallSum = Object.values(m.fallback_counts||{}).reduce(function(a,b){return a+b;}, 0);
+
+  var hitHtml = Object.keys(hits).length > 0
+    ? Object.entries(hits).map(function(e){ return '<div class="text-sm" style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="max-width:300px;overflow:hidden;text-overflow:ellipsis">'+e[0]+'</span><b>'+e[1]+'</b></div>'; }).join('')
+    : '<div class="text-gray text-sm">暂无 1h 路由数据</div>';
+
   document.getElementById('llmPanels').innerHTML =
-    '<div class="card"><h3 class="font-semibold mb-2">模型路由命中 (1h)</h3>' +
-    Object.entries(m.window_hit_counts||{}).map(([k,v])=>'<div class="flex justify-between text-sm mb-1"><span class="truncate mr-2">'+k.substring(0,30)+'</span><span class="font-bold">'+(v||0)+'</span></div>').join('') +
-    '<div class="text-xs text-gray-400 mt-2">命中: '+(m.hit_counts ? Object.values(m.hit_counts).reduce((a,b)=>a+b,0) : 0)+
-    ' | 失败: '+(m.fail_counts ? Object.values(m.fail_counts).reduce((a,b)=>a+b,0) : 0)+
-    ' | 降级: '+(m.fallback_counts ? Object.values(m.fallback_counts).reduce((a,b)=>a+b,0) : 0)+'</div></div>' +
-    '<div class="card"><h3 class="font-semibold mb-2">当前模型配置</h3>' +
-    ['openai_model','summary_model','backup_openai_model','llm_routing_mode'].map(k=>
-      '<div class="text-sm mb-1"><span class="text-gray-500">'+k+':</span> '+(cfg[k]||'—')+'</div>'
-    ).join('') + '</div>';
+    '<div class="card"><h3>模型路由命中 (1h)</h3>' + hitHtml +
+    '<div class="text-xs text-gray" style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">总命中: ' + hitSum + ' | 失败: ' + failSum + ' | 降级: ' + fallSum + '</div></div>' +
+    '<div class="card"><h3>当前模型配置</h3><div class="text-sm">' +
+    '<div>主聊天: /models/Gemma-4-E2B-Q4_K_M.gguf</div>' +
+    '<div>备援: DeepSeek-R1-0528-Qwen3-8B</div>' +
+    '<div>第三: KAT-Coder-Exp-72B-1010</div>' +
+    '<div>第四: DeepSeek-V4-Flash</div>' +
+    '<div>路由: fallback</div></div></div>';
 }
 
 function renderEvents(ev) {
-  document.getElementById('eventsPanel').innerHTML = '<h3 class="font-semibold mb-2">原始事件</h3>' +
-    '<div class="text-sm">采集器: '+(ev.collector||'—')+' | 缓冲池: '+(ev.spool||'—')+' | 会话: '+(ev.sessions||'—')+'</div>' +
-    '<div class="text-xs text-gray-400 mt-2">状态: '+(ev.status||'unknown')+'</div>';
+  ev = ev || {};
+  var issues = ev.issues && ev.issues.length ? '<div class="text-xs text-red" style="margin-top:4px">问题: ' + ev.issues.join(', ') + '</div>' : '';
+  document.getElementById('eventsPanel').innerHTML =
+    '<h3>原始事件采集</h3>' +
+    '<div class="grid grid3" style="margin-bottom:0"><div class="text-sm"><span class="text-gray">采集器:</span> ' + (ev.collector||'—') + '</div>' +
+    '<div class="text-sm"><span class="text-gray">缓冲池:</span> ' + (ev.spool||'—') + '</div>' +
+    '<div class="text-sm"><span class="text-gray">会话数:</span> ' + (ev.sessions||'—') + '</div></div>' +
+    '<div class="text-xs text-gray" style="margin-top:4px">状态: ' + (ev.status||'unknown') + '</div>' + issues;
+}
+
+function renderAlerts(d) {
+  var a = d.alerts || {};
+  document.getElementById('alertsPanel').innerHTML =
+    '<h3>告警</h3>' +
+    '<div class="text-sm">状态: <b class="' + (a.status==='ok'?'text-green':'text-red') + '">' + (a.status||'—') + '</b> | 检查项: ' + (a.checks_evaluated||0) + '</div>' +
+    (a.issues&&a.issues.length ? '<div class="text-xs text-red" style="margin-top:4px">' + a.issues.join('; ') + '</div>' : '');
+}
+
+async function loadSessions() {
+  var el = document.getElementById('sessionsPanel');
+  el.innerHTML = '<span class="text-gray">加载中...</span>';
+  try {
+    var r = await fetch('/api/v1/sessions/recent?limit=20');
+    var sessions = await r.json();
+    if (!sessions.length) { el.innerHTML = '<span class="text-gray">无会话</span>'; return; }
+    var rows = sessions.map(function(s) {
+      return '<tr><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (s.title||'无标题') + '</td>' +
+        '<td style="text-align:center">' + (s.message_count||0) + '</td>' +
+        '<td class="text-xs text-gray">' + new Date(s.created_at).toLocaleString('zh-CN') + '</td>' +
+        '<td><a href="/app?session=' + s.id + '" style="color:#3b82f6;font-size:11px">查看</a></td></tr>';
+    }).join('');
+    el.innerHTML = '<h3>最近会话 (' + sessions.length + ')</h3>' +
+      '<div style="overflow-x:auto"><table><thead><tr><th>标题</th><th style="text-align:center">消息</th><th>创建时间</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  } catch(e) { el.innerHTML = '<span class="text-red">加载失败: ' + e.message + '</span>'; }
+}
+
+async function loadMemory() {
+  var el = document.getElementById('memoryPanel');
+  el.innerHTML = '<span class="text-gray">加载中...</span>';
+  try {
+    var r = await fetch('/api/v1/users/jimwong/persona');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var p = await r.json();
+    var keys = Object.keys(p).filter(function(k) { return k !== 'generated_at'; });
+    var items = keys.map(function(k) {
+      var v = p[k];
+      return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px"><span class="text-gray">' + k + '</span><span>' + (typeof v==='object' ? JSON.stringify(v).substring(0,80) : v) + '</span></div>';
+    }).join('');
+    el.innerHTML = '<h3>用户画像 (jimwong)</h3>' + (items || '<span class="text-gray">暂无数据</span>');
+  } catch(e) { el.innerHTML = '<span class="text-gray">端点暂不可用 (' + e.message + ')</span>'; }
 }
 
 function doSearch() {
-  const q = document.getElementById('searchQuery').value;
-  if(!q) return;
-  fetch('/api/v1/search/weighted?query='+encodeURIComponent(q)+'&limit=5').then(r=>r.json()).then(hits=>{
-    const el = document.getElementById('searchResults');
-    if(!hits.length) { el.innerHTML='<div class="text-gray-400 text-sm">无结果</div>'; return; }
-    el.innerHTML = hits.map(h=>'<div class="border-b py-2 text-sm"><div class="text-xs text-gray-400">得分: '+h.score.toFixed(3)+' | 角色: '+h.role+'</div><div class="text-gray-700 truncate">'+h.content.substring(0,100)+'</div></div>').join('');
-  });
+  var q = document.getElementById('searchQuery').value;
+  if (!q) return;
+  var el = document.getElementById('searchResults');
+  el.innerHTML = '<span class="text-gray">搜索中...</span>';
+  fetch('/api/v1/search/weighted?query=' + encodeURIComponent(q) + '&limit=5').then(function(r) { return r.json(); }).then(function(hits) {
+    if (!hits || !hits.length) { el.innerHTML = '<span class="text-gray">无结果</span>'; return; }
+    el.innerHTML = hits.map(function(h) {
+      return '<div class="result-item"><div class="result-meta">得分: ' + h.score.toFixed(3) + ' | 角色: ' + h.role + ' | 长度: ' + h.content.length + '</div><div class="result-content">' + h.content.substring(0,150) + '</div></div>';
+    }).join('');
+  }).catch(function(e) { el.innerHTML = '<span class="text-red">搜索失败: ' + e.message + '</span>'; });
 }
 
-// Initial load
-loadAll(); toggleRefresh();
+loadAll();
+document.getElementById('autoRefresh').checked && (refreshTimer = setInterval(loadAll, 15000));
 </script>
-</body></html>
+</body>
+</html>
