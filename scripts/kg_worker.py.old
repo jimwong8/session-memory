@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""KG extract worker - 4 models parallel (edgefn)"""
+import json, os, re, time
+from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from openai import OpenAI
+import redis
+import threading
+import random
+
+DB_URL = os.getenv("KG_DB_URL", "postgresql://postgres:postgres@postgres:5432/session_memory")
+API_KEY = os.getenv("BACKUP_OPENAI_API_KEY", "sk-3F8...EaD0")
+BASE_URL = os.getenv("BACKUP_OPENAI_BASE_URL", "https://api.edgefn.net/v1")
+
+# Shared key pool (9 keys shared between R1 and KAT)
+SHARED_KEYS = [
+    "sk-gRDyHSWBEtogghNRE13b2fD4D8F44f45A1599676EdF0Dd99",
+    "sk-75WuMqlMGRmqokN36a57F79c2c2d4d918fE00866A2190032",
+    "sk-qK8upXmgysTCPWS79c2fB8D76e0b4b0fBf57Cd30EfCc8b80",
+    "sk-TUbnKYvUPgkK9Lzg066b47F747C54202A8360e1746831c89",
+    "sk-OnaMuilL5Wl0Se25EbB05a277c18434fAd3b9394504a352d",
+    "sk-a2jl3SrKbFLWZ9jm09F0E3Eb00E64550A33e80F083E31b60",
+    "sk-EbEqTPgflLKmstW27d24074e0076441490B0264d0b76DaF3",
+    "sk-YJZDtvQv9P3E7F6bF97f5f88Eb3e45C68b8b1e6dE92dD708",
+    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
+]
+
+# Per-model key pools (model-specific keys + shared pool)
+R1_KEYS = ["sk-9oep26R1GInewtcn449243Ba4dD14aB2B79f2032Ed3e1a93"] + SHARED_KEYS  # 10 keys
+KAT_KEYS = ["sk-8Cs2nQ9f2hCLHQoR2307Ef082a4944Ab8496B06bAaA38f4e"] + SHARED_KEYS  # 10 keys
+
+MODEL_KEYS = {
+    "DeepSeek-V4-Flash": "sk-HeE39d52E5VP7fM2A653CbA144B34a1bB288Ba825f72166d",
+}
+
+MODELS = ["DeepSeek-V3.2-EXP", "KAT-Coder-Exp-72B-1010", "DeepSeek-R1-0528-Qwen3-8B", "DeepSeek-V4-Flash"]
+MULTI_KEY_MODELS = {"DeepSeek-R1-0528-Qwen3-8B": R1_KEYS, "KAT-Coder-Exp-72B-1010": KAT_KEYS}
+
+ALLOWED_RELATIONS = {'depends_on','modifies','fixes','exemplifies','prefers_over','contradicts','reinforces','evolved_into','invalidated_by','leads_to','derived_from','part_of'}
+
+R = redis.Redis(host="redis", port=6379, db=0, socket_timeout=3)
+
+def _incr(metric, route, amount=1):
+    try:
+        key = f"llm:route:{metric}:kg:{route}"
+        R.incrby(key, amount)
+        R.expire(key, 86400)
+    except Exception:
+        pass
+
+def extract_with_model(model, content, api_key=None, max_retries=3):
+    if api_key is None:
+        api_key = API_KEY
+    client = OpenAI(api_key=api_key, base_url=BASE_URL, timeout=30)
+    prompt = ("你是一个知识图谱提取引擎。只输出JSON，禁止markdown。\n"
+              "允许实体类型: file, function, concept, error, tool, person, product, technology\n"
+              "允许关系: depends_on, modifies, fixes, exemplifies, prefers_over, contradicts, reinforces, evolved_into, invalidated_by, leads_to, derived_from, part_of\n"
+              '格式: {"entities":[{"name":"x","type":"concept"}],"relations":[{"source":"a","target":"b","type":"depends_on"}]}\n'
+              "内容:\n" + content[:2500])
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            r = client.chat.completions.create(model=model, messages=[{"role":"user","content":prompt}], temperature=0, max_tokens=512)
+            _incr("hit", model)
+            t = r.choices[0].message.content or ""
+            for strategy in [lambda s: re.search(r"\{[\s\S]*\}", s), lambda s: re.search(r"\{(?:[^{}]|\{[^{}]*\})*\}", s)]:
+                m = strategy(t)
+                if m:
+                    try: return json.loads(m.group(0)), None
+                    except: continue
+            return {"entities":[],"relations":[]}, None
+        except Exception as e:
+            last_err = f"{type(e).__name__}: {str(e)[:120]}"
+            if "429" in str(e) or "RateLimit" in type(e).__name__:
+                time.sleep(2 * (attempt + 1))
+                continue
+            _incr("fail", model)
+            return None, last_err
+    _incr("fail", model)
+    return None, last_err
+
+def main():
+    QPM = {"DeepSeek-V3.2-EXP": 16, "DeepSeek-R1-0528-Qwen3-8B": 100,
+           "KAT-Coder-Exp-72B-1010": 60, "DeepSeek-V4-Flash": 18}
+    total_w = sum(QPM.values())
+
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT count(*) FROM kg_jobs WHERE status='pending' LIMIT 1")
+    pending = cur.fetchone()["count"]
+    if pending == 0: conn.close(); return
+    print(f"pending={pending}", flush=True)
+
+    BATCH = 50
+    cur.execute(
+        "SELECT j.id, j.message_id, j.session_id, m.content "
+        "FROM kg_jobs j JOIN messages m ON j.message_id = m.id "
+        "WHERE j.status='pending' ORDER BY j.created_at LIMIT %s", (BATCH,)
+    )
+    jobs = cur.fetchall()
+    if not jobs: conn.close(); return
+
+    for job in jobs:
+        cur.execute("UPDATE kg_jobs SET status='running', locked_at=now() WHERE id=%s", (job["id"],))
+    conn.commit()
+
+    n = len(jobs)
+    alloc = {m: 0 for m in MODELS}
+    for i in range(n):
+        best, best_r = None, float("inf")
+        for m in MODELS:
+            ratio = (alloc[m] + 1) / QPM[m]
+            if ratio < best_r:
+                best_r, best = ratio, m
+        alloc[best] += 1
+
+    model_queue = []
+    for m in MODELS:
+        model_queue += [m] * alloc[m]
+    random.seed(0)
+    random.shuffle(model_queue)
+    by_model = {m: [] for m in MODELS}
+    for job, m in zip(jobs, model_queue):
+        by_model[m].append(job)
+
+    print(f"alloc={ {k: len(v) for k,v in by_model.items()} }", flush=True)
+
+    def process_job(job, model, api_key=None):
+        result, err = extract_with_model(model, job["content"], api_key=api_key)
+        if result is None:
+            cur.execute("UPDATE kg_jobs SET status='failed', last_error=%s WHERE id=%s",
+                        (f"LLM({model[:6]}): {err}" if err else f"LLM({model[:6]}) error", job["id"]))
+            conn.commit()
+            return False
+        entity_ids = {}
+        for e in result.get("entities", []):
+            name, etype = e.get("name", "unknown"), e.get("type", "concept")
+            cur.execute("SELECT id FROM kg_entities WHERE session_id=%s AND name=%s", (job["session_id"], name))
+            row = cur.fetchone()
+            if row:
+                entity_ids[name] = row["id"]
+            else:
+                eid = os.urandom(16).hex()
+                cur.execute("INSERT INTO kg_entities (id,session_id,name,entity_type,level,created_at) VALUES (%s,%s,%s,%s,'L1',NOW())", (eid, job["session_id"], name, etype))
+                entity_ids[name] = eid
+        for r in result.get("relations", []):
+            src_name, tgt_name, rtype = r.get("source", ""), r.get("target", ""), r.get("type", "")
+            if rtype not in ALLOWED_RELATIONS: continue
+            src_id = entity_ids.get(src_name); tgt_id = entity_ids.get(tgt_name)
+            if not src_id or not tgt_id: continue
+            cur.execute("UPDATE kg_relations SET invalid_at=NOW(), version=COALESCE(version,1)+1 WHERE session_id=%s AND source_entity_id=%s AND target_entity_id=%s AND relation_type<>%s AND invalid_at IS NULL", (job["session_id"], src_id, tgt_id, rtype))
+            rid = os.urandom(16).hex()
+            cur.execute("INSERT INTO kg_relations (id,session_id,source_entity_id,target_entity_id,relation_type,valid_at,created_at) VALUES (%s,%s,%s,%s,%s,NOW(),NOW())", (rid, job["session_id"], src_id, tgt_id, rtype))
+        cur.execute("UPDATE kg_jobs SET status='completed', updated_at=now() WHERE id=%s", (job["id"],))
+        conn.commit()
+        print(f"  KG:{job['id'][:8]} [{model[:20]}]", flush=True)
+        return True
+
+    def process_serial(model, job_list, api_key=None):
+        for job in job_list:
+            process_job(job, model, api_key=api_key)
+
+    threads = []
+
+    # Multi-key models: each key gets its own thread
+    for m in MODELS:
+        mjobs = by_model.get(m, [])
+        if not mjobs:
+            continue
+        keys = MULTI_KEY_MODELS.get(m)
+        if keys and len(keys) > 1:
+            buckets = {k: [] for k in keys}
+            for i, job in enumerate(mjobs):
+                buckets[keys[i % len(keys)]].append(job)
+            for k, kjobs in buckets.items():
+                if kjobs:
+                    t = threading.Thread(target=process_serial, args=(m, kjobs, k))
+                    t.start()
+                    threads.append(t)
+            print(f"{m[:20]}: {len(mjobs)} jobs / {len(keys)} keys", flush=True)
+        else:
+            api_key = API_KEY
+            if m in MODEL_KEYS:
+                api_key = MODEL_KEYS[m]
+            elif m in MULTI_KEY_MODELS:
+                api_key = MULTI_KEY_MODELS[m][0]
+            t = threading.Thread(target=process_serial, args=(m, mjobs, api_key))
+            t.start()
+            threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    conn.close()
+    print(f"done {len(jobs)}", flush=True)
+
+if __name__ == "__main__":
+    main()

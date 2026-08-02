@@ -11,6 +11,7 @@ from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sql_text
 
+
 from src.database import init_db, async_session
 from src.cache import cache
 from src.config import settings
@@ -62,17 +63,68 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://10.100.1.13:8000",
-        "http://localhost:8000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
+@app.get("/api/v1/stats")
+async def system_stats():
+    """System stats - cached for 60s, auto-refresh if empty"""
+    if _stats_cache["messages"] == 0:
+        await _do_refresh()
+    return _stats_cache
+    return _stats_cache
+
+_stats_cache = {"messages": 0, "sessions": 0, "entities": 0, "relations": 0,
+                 "atoms": 0, "scenarios": 0, "bge": 0, "m3": 0,
+                 "bge_pct": 0, "m3_pct": 0, "kg_done": 0, "kg_pending": 0}
+
+async def _do_refresh():
+    """Refresh stats cache"""
+    global _stats_cache
+    from src.database import async_session
+    from sqlalchemy import text
+    async with async_session() as db:
+        rows = (await db.execute(text("""
+            SELECT relname, n_live_tup 
+            FROM pg_stat_user_tables 
+            WHERE relname IN ('messages','sessions','kg_entities','kg_relations','memory_atoms','memory_scenarios')
+        """))).fetchall()
+        est = {r[0]: r[1] for r in rows}
+        
+        msgs = est.get('messages', 1)
+        # Exact counts (cached 60s, so 7s query is acceptable)
+        bge = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding IS NOT NULL"))).scalar() or 0
+        m3 = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL"))).scalar() or 0
+        kg_pending = (await db.execute(text("SELECT count(*) FROM messages WHERE metadata_json->>'kg_extract_pending'='true' AND length(content)>=50"))).scalar() or 0
+        kg_done = max(0, int(msgs) - kg_pending - 10000)
+        
+        _stats_cache = {
+            "messages": msgs, "sessions": est.get('sessions', 0),
+            "entities": est.get('kg_entities', 0), "relations": est.get('kg_relations', 0),
+            "atoms": est.get('memory_atoms', 0), "scenarios": est.get('memory_scenarios', 0),
+            "bge": bge, "m3": m3,
+            "bge_pct": round(bge/max(msgs,1)*100,1), "m3_pct": round(m3/max(msgs,1)*100,1),
+            "kg_done": kg_done, "kg_pending": kg_pending,
+        }
+
+@app.get("/api/v1/stats/refresh")
+async def trigger_stats_refresh():
+    """Force stats refresh"""
+    await _do_refresh()
+    return {"status": "refreshed", "stats": _stats_cache}
+
+@app.on_event("startup")
+async def start_stats_refresh():
+    """Background task to refresh stats every 60s"""
+    import asyncio
+    
+    async def refresh():
+        while True:
+            try:
+                await _do_refresh()
+            except Exception as e:
+                print(f"Stats refresh error: {e}")
+            await asyncio.sleep(60)
+    
+    asyncio.create_task(refresh())
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):

@@ -18,28 +18,28 @@ import threading
 import random
 
 DB_URL = os.getenv("KG_DB_URL", "postgresql://postgres:postgres@postgres:5432/session_memory")
-API_KEY = os.getenv("BACKUP_OPENAI_API_KEY", "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0")
+API_KEY = os.getenv("BACKUP_OPENAI_API_KEY", "sk-3F8...EaD0")
 BASE_URL = os.getenv("BACKUP_OPENAI_BASE_URL", "https://api.edgefn.net/v1")
 
 # Shared key pool (9 keys shared between R1 and KAT)
 SHARED_KEYS = [
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
-    "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
+    "sk-gRD...Dd99",
+    "sk-75W...0032",
+    "sk-qK8...8b80",
+    "sk-TUb...1c89",
+    "sk-Ona...352d",
+    "sk-a2j...1b60",
+    "sk-EbE...DaF3",
+    "sk-YJZ...D708",
+    "sk-PaP...B1B0",
 ]
 
 # Per-model key pools (model-specific keys + shared pool)
-R1_KEYS = ["sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0"] + SHARED_KEYS  # 10 keys
-KAT_KEYS = ["sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0"] + SHARED_KEYS  # 10 keys
+R1_KEYS = ["sk-9oe...1a93"] + SHARED_KEYS  # 10 keys
+KAT_KEYS = ["sk-8Cs...8f4e"] + SHARED_KEYS  # 10 keys
 
 MODEL_KEYS = {
-    "DeepSeek-V4-Flash": "sk-PaPq01oEJPsfhxj58c44A8Aa237d488e99A141A4DcAcB1B0",
+    "DeepSeek-V4-Flash": "sk-HeE...166d",
 }
 
 MODELS = ["DeepSeek-V3.2-EXP", "KAT-Coder-Exp-72B-1010", "DeepSeek-R1-0528-Qwen3-8B", "DeepSeek-V4-Flash"]
@@ -300,7 +300,7 @@ def process_job(job, model, api_key=None):
     
     # 更新任务状态
     cur.execute(
-        "UPDATE kg_jobs SET status='completed', model_used=%s, updated_at=now() WHERE id=%s",
+        "UPDATE kg_jobs SET status='completed', updated_at=now() WHERE id=%s",
         (job["id"],)
     )
     conn.commit()

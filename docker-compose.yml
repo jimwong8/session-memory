@@ -1,88 +1,90 @@
+networks:
+  default:
+    name: session-memory_default
 services:
   api:
-    image: session-memory-api
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2
     container_name: session_memory_api
-    ports:
-      - 8000:8000
-    env_file:
-      - .env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./src:/app/src
-      - ./scripts:/app/scripts
-      - ./data/models:/models
-      - ./logs:/app/logs
-      - ./data/memory:/app/data/memory
-      - ./data/hf_cache:/app/data/hf_cache
-      - ./data/collector-spool:/app/data/collector-spool
-    restart: unless-stopped
-    healthcheck:
-      test: [CMD, curl, -f, http://localhost:8000/health]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "24.0"
           memory: 16G
         reservations:
           cpus: '0.5'
           memory: 512M
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
-
-
-  backfill:
-    image: session-memory-api
-    container_name: session_memory_backfill
     env_file:
-      - .env
-    environment:
-      - PYTHONPATH=/app
-      - PYTHONUNBUFFERED=1
-      - BACKFILL_MAX=220000
+    - .env
+    healthcheck:
+      interval: 30s
+      retries: 5
+      start_period: 90s
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8000/health
+      timeout: 10s
+    image: session-memory-api
+    ports:
+    - 8000:8000
+    restart: unless-stopped
+    volumes:
+    - ./src:/app/src
+    - ./scripts:/app/scripts
+    - ./data/models:/models
+    - ./logs:/app/logs
+    - ./data/memory:/app/data/memory
+    - ./data/hf_cache:/app/data/hf_cache
+    - ./data/collector-spool:/app/data/collector-spool
+  backfill_disabled:
+    command: python /app/scripts/backfill_embeddings.py
+    container_name: session_memory_backfill
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./src:/app/src
-      - ./scripts:/app/scripts
-      - ./data/models:/models
-      - ./logs:/app/logs
-    restart: "no"
-    command: python /app/scripts/backfill_embeddings.py
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 1G
+          cpus: "24.0"
+          memory: 4G
         reservations:
-          cpus: "0.25"
-          memory: 512M
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: session_memory_postgres
+          cpus: "2.0"
+          memory: 1G
+    env_file:
+    - .env
     environment:
-      POSTGRES_DB: session_memory
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_INITDB_ARGS: -E UTF8 --locale=C
-    ports:
-      - 5432:5432
+    - PYTHONPATH=/app
+    - PYTHONUNBUFFERED=1
+    - BACKFILL_MAX=220000
+    image: session-memory-api
+    restart: 'no'
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
-      - ./backups:/backups
+    - ./src:/app/src
+    - ./scripts:/app/scripts
+    - ./data/models:/models
+    - ./logs:/app/logs
+  grafana:
+    container_name: session_memory_grafana
+    depends_on:
+    - prometheus
+    environment:
+    - GF_SECURITY_ADMIN_PASSWORD=admin
+    - GF_USERS_ALLOW_SIGN_UP=false
+    image: grafana/grafana:latest
+    ports:
+    - 3000:3000
     restart: unless-stopped
-    healthcheck:
-      test: [CMD-SHELL, pg_isready -U postgres]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    volumes:
+    - ./data/grafana:/var/lib/grafana
+    - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+  postgres:
+    container_name: session_memory_postgres
     deploy:
       resources:
         limits:
@@ -91,21 +93,72 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-
-  redis:
-    image: redis:7-alpine
-    container_name: session_memory_redis
-    restart: unless-stopped
-    expose:
-      - 6379
-    volumes:
-      - ./data/redis:/data
+    environment:
+      POSTGRES_DB: session_memory
+      POSTGRES_INITDB_ARGS: -E UTF8 --locale=C
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
     healthcheck:
-      test: [CMD, redis-cli, ping]
       interval: 10s
-      timeout: 5s
       retries: 5
+      test:
+      - CMD-SHELL
+      - pg_isready -U postgres
+      timeout: 5s
+    image: pgvector/pgvector:pg16
+    ports:
+    - 5432:5432
+    restart: unless-stopped
+    volumes:
+    - ./data/postgres:/var/lib/postgresql/data
+    - ./backups:/backups
+  prometheus:
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
+    - --storage.tsdb.retention.time=30d
+    container_name: session_memory_prometheus
+    depends_on:
+    - api
+    image: prom/prometheus:latest
+    ports:
+    - 9090:9090
+    restart: unless-stopped
+    volumes:
+    - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    - ./monitoring/session-memory-alerts.yml:/etc/prometheus/session-memory-alerts.yml
+    - ./data/prometheus:/prometheus
+  pyramid-worker:
+    command: python /app/scripts/pyramid_worker.py
+    container_name: session_memory_pyramid
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "24.0"
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    env_file:
+    - .env
+    environment:
+    - PYTHONPATH=/app
+    - PYTHONUNBUFFERED=1
+    image: session-memory-api
+    restart: unless-stopped
+    volumes:
+    - ./src:/app/src
+    - ./scripts:/app/scripts
+  redis:
     command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    container_name: session_memory_redis
     deploy:
       resources:
         limits:
@@ -114,45 +167,22 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: session_memory_prometheus
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./monitoring/session-memory-alerts.yml:/etc/prometheus/session-memory-alerts.yml
-      - ./data/prometheus:/prometheus
-    ports:
-      - 9090:9090
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
+    expose:
+    - 6379
+    healthcheck:
+      interval: 10s
+      retries: 5
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      timeout: 5s
+    image: redis:7-alpine
     restart: unless-stopped
-    depends_on:
-      - api
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: session_memory_grafana
     volumes:
-      - ./data/grafana:/var/lib/grafana
-      - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
-    ports:
-      - 3000:3000
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-
+    - ./data/redis:/data
 volumes:
-  postgres_data:
-  redis_data:
-  prometheus_data:
-  grafana_data:
-
-networks:
-  default:
-    name: session-memory_default
+  grafana_data: null
+  postgres_data: null
+  prometheus_data: null
+  redis_data: null

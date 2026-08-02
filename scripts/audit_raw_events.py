@@ -8,7 +8,7 @@ log_dir.mkdir(parents=True, exist_ok=True)
 
 def sql(q):
     r = subprocess.run(
-        ["docker", "exec", "session_memory_postgres", "psql", "-U", "postgres", "-d", "central_session", "-At", "-c", q],
+        ["docker", "exec", "session_memory_postgres", "psql", "-U", "postgres", "-d", "session_memory", "-At", "-c", q],
         capture_output=True, text=True, timeout=30
     )
     return r.stdout.strip()
