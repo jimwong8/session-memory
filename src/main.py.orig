@@ -11,7 +11,6 @@ from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sql_text
 
-
 from src.database import init_db, async_session
 from src.cache import cache
 from src.config import settings
@@ -63,90 +62,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://10.100.1.13:8000",
+        "http://localhost:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/api/v1/stats")
-async def system_stats():
-    """System stats - cached for 60s, auto-refresh if empty"""
-    if _stats_cache["messages"] == 0:
-        await _do_refresh()
-    return _stats_cache
-    return _stats_cache
-
-_stats_cache = {"messages": 0, "sessions": 0, "entities": 0, "relations": 0,
-                 "atoms": 0, "scenarios": 0, "bge": 0, "m3": 0,
-                 "bge_pct": 0, "m3_pct": 0, "kg_done": 0, "kg_pending": 0, "kg_failed": 0}
-
-async def _do_refresh():
-    """Refresh stats cache"""
-    global _stats_cache
-    from src.database import async_session
-    from sqlalchemy import text
-    async with async_session() as db:
-        # pg_stat_user_tables.n_live_tup is UNRELIABLE here: autovacuum has never
-        # run on these tables (last_autovacuum IS NULL), so n_live_tup reported
-        # 957 for a 4.27M-row messages table -> percentages blew past 60000%.
-        # Use pg_class.reltuples (updated by ANALYZE) and fall back to exact
-        # count(*) whenever the estimate is obviously broken.
-        rows = (await db.execute(text("""
-            SELECT c.relname, GREATEST(c.reltuples::bigint, 0)
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public'
-              AND c.relname IN ('messages','sessions','kg_entities','kg_relations','memory_atoms','memory_scenarios')
-        """))).fetchall()
-        est = {r[0]: int(r[1] or 0) for r in rows}
-
-        # Every headline number is counted exactly. reltuples drifts by tens of
-        # thousands between ANALYZE runs (sessions was off by ~44k, kg_entities
-        # by ~5k), and this endpoint is cached for 60s, so exact counts are
-        # affordable and keep /stats consistent with /admin/dashboard.
-        for tbl in ('messages', 'sessions', 'kg_entities', 'kg_relations',
-                    'memory_atoms', 'memory_scenarios'):
-            try:
-                est[tbl] = (await db.execute(text(f"SELECT count(*) FROM {tbl}"))).scalar() or 0
-            except Exception:
-                est[tbl] = est.get(tbl, 0)
-        msgs = est.get('messages', 0)
-        # Use partial-index-friendly counts (fast) for bge/m3; read KG progress from
-        # the kg_jobs table (real status), not a messages-table estimate — the old
-        # estimate made kg_done a constant 0 (dashboard "false zero" bug).
-        bge = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding IS NOT NULL"))).scalar() or 0
-        m3 = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL"))).scalar() or 0
-        kg_rows = (await db.execute(text("SELECT status, count(*) FROM kg_jobs GROUP BY status"))).fetchall()
-        kg_counts = {r[0]: r[1] for r in kg_rows}
-        kg_done = kg_counts.get('completed', 0)
-        kg_pending = kg_counts.get('pending', 0)
-        kg_failed = kg_counts.get('failed', 0)
-        
-        _stats_cache = {
-            "messages": msgs, "sessions": est.get('sessions', 0),
-            "entities": est.get('kg_entities', 0), "relations": est.get('kg_relations', 0),
-            "atoms": est.get('memory_atoms', 0), "scenarios": est.get('memory_scenarios', 0),
-            "bge": bge, "m3": m3,
-            "bge_pct": round(bge/max(msgs,1)*100,1), "m3_pct": round(m3/max(msgs,1)*100,1),
-            "kg_done": kg_done, "kg_pending": kg_pending, "kg_failed": kg_failed,
-        }
-
-@app.get("/api/v1/stats/refresh")
-async def trigger_stats_refresh():
-    """Force stats refresh"""
-    await _do_refresh()
-    return {"status": "refreshed", "stats": _stats_cache}
-
-@app.on_event("startup")
-async def start_stats_refresh():
-    """Background task to refresh stats every 60s"""
-    import asyncio
-    
-    async def refresh():
-        while True:
-            try:
-                await _do_refresh()
-            except Exception as e:
-                print(f"Stats refresh error: {e}")
-            await asyncio.sleep(60)
-    
-    asyncio.create_task(refresh())
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
@@ -213,20 +139,8 @@ async def health_check(deep: bool = Query(False)):
 
     try:
         embedding = await asyncio.wait_for(create_embedding("health check"), timeout=10)
-        if embedding is None:
-            checks["embedding"] = {
-                "status": "skipped",
-                "provider": settings.embedding_provider,
-                "model": settings.embedding_model,
-                "dimensions": settings.embedding_dimensions,
-                "reason": "embedding skipped (load protection)",
-            }
-            valid = False
-        else:
-            valid = isinstance(embedding, list) and len(embedding) == settings.embedding_dimensions
-        if embedding is None:
-            pass  # already marked skipped above
-        elif valid:
+        valid = isinstance(embedding, list) and len(embedding) == settings.embedding_dimensions
+        if valid:
             checks["embedding"] = {
                 "status": "ok",
                 "provider": settings.embedding_provider,

@@ -746,6 +746,7 @@ async def unified_query(
         relations = [KGRelationResponse.model_validate(r) for r in rels]
 
     # Temporal recency bias
+    recency_bias = data.recency_bias
     recency_weight = 0.15 if recency_bias in ("on", "auto") else 0.0
     if recency_bias == "auto":
         temporal_words = {"latest", "current", "recent", "newest"}
@@ -2053,12 +2054,28 @@ async def decompose_query(data: dict):
 
 
 
+def _http_embed(text):
+    """Call GPU embedding service (bge-base 768d). Returns list[float] or None."""
+    url = "http://10.100.1.15:8002/v1/embeddings"
+    try:
+        payload = _json.dumps({"input": [text], "model": "bge-base-zh-v1.5"}).encode()
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            resp = _json.loads(r.read())
+        return resp["data"][0]["embedding"]
+    except Exception:
+        return None
+
+
 @router.get("/search/weighted")
 async def search_weighted(query: str = Query(...), limit: int = Query(10, ge=1, le=50)):
     """Vector search with length penalty"""
-    import psycopg2
-    from src.embedding_service import create_embedding
-    query_emb = await create_embedding(query)
+    import psycopg2, urllib.request, json as _json
+    query_emb = _http_embed(query)
+    if not query_emb or len(query_emb) != 768:
+        from src.embedding_service import create_embedding
+        query_emb = await create_embedding(query, force=True)
+        assert len(query_emb) == 768, f"query embedding dim {len(query_emb)} != 768"
     conn = psycopg2.connect(host="postgres", dbname="session_memory", user="postgres", password="postgres")
     cur = conn.cursor()
     cur.execute(

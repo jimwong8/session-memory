@@ -15,6 +15,21 @@ logger = logging.getLogger(__name__)
 _KG_RATE_LIMIT_UNTIL = 0.0
 _KG_RATE_LIMIT_COOLDOWN_SECONDS = 120
 
+ALLOWED_ENTITY_TYPES = {"file", "function", "concept", "error"}
+ALLOWED_RELATION_TYPES = {
+    "modifies", "depends_on", "fixes", "exemplifies", "prefers_over",
+    "contradicts", "reinforces", "evolved_into", "invalidated_by",
+    "leads_to", "derived_from", "part_of",
+}
+# Extended relation types observed in production model outputs.
+WHITELISTED_RELATION_TYPES = ALLOWED_RELATION_TYPES | {
+    "calls", "implements", "contains", "uses", "creates", "provides",
+    "supports", "includes", "defines", "verifies", "causes", "maps",
+    "documents", "covers", "produces", "generates", "triggers",
+    "executes", "indicates", "validates", "references", "configures",
+    "is_type_of", "persists_to", "hosts", "connects", "exposes",
+}
+
 _ANALYSIS_PLAN_PREFIXES = (
     "**Execution Plan**",
     "[analyze-mode]",
@@ -113,16 +128,6 @@ class KnowledgeGraphService:
         entities: list[dict[str, str]] = []
         relations: list[dict[str, str]] = []
         seen_entities: set[tuple[str, str]] = set()
-        allowed_entity_types = {"file", "function", "concept", "error"}
-        allowed_relation_types = {"modifies", "depends_on", "fixes", "exemplifies", "prefers_over", "contradicts", "reinforces", "evolved_into", "invalidated_by", "leads_to", "derived_from", "part_of"}
-        # Extended whitelist for other valid types observed in production
-        WHITELISTED_RELATION_TYPES = allowed_relation_types | {
-            "calls", "implements", "contains", "uses", "creates", "provides",
-            "supports", "includes", "defines", "verifies", "causes", "maps",
-            "documents", "covers", "produces", "generates", "triggers",
-            "executes", "indicates", "validates", "references", "configures",
-            "is_type_of", "persists_to", "hosts", "connects", "exposes",
-        }
         relation_type_map = {"依赖": "depends_on", "修改": "modifies", "修复": "fixes", "例如": "exemplifies", "偏好": "prefers_over", "更喜欢": "prefers_over", "矛盾": "contradicts", "反驳": "contradicts", "强化": "reinforces", "支持": "reinforces", "演化": "evolved_into", "演化为": "evolved_into", "失效": "invalidated_by", "取代": "invalidated_by", "导致": "leads_to", "来源于": "derived_from", "源自": "derived_from", "属于": "part_of", "部分": "part_of"}
 
         for line in text.splitlines():
@@ -131,7 +136,7 @@ class KnowledgeGraphService:
             if entity_match:
                 name = entity_match.group(1).strip().strip(chr(96)).strip(chr(39)).strip(chr(34))
                 ent_type = entity_match.group(2).strip().lower()
-                if ent_type not in allowed_entity_types:
+                if ent_type not in ALLOWED_ENTITY_TYPES:
                     ent_type = "concept"
                 if name and (name, ent_type) not in seen_entities:
                     seen_entities.add((name, ent_type))
@@ -143,7 +148,7 @@ class KnowledgeGraphService:
                 target = relation_match.group(2).strip().strip(chr(96)).strip(chr(39)).strip(chr(34))
                 rel_type = relation_match.group(3).strip().lower()
                 rel_type = relation_type_map.get(rel_type, rel_type)
-                if source and target and rel_type in allowed_relation_types:
+                if source and target and rel_type in ALLOWED_RELATION_TYPES:
                     relations.append({"source": source[:160], "target": target[:160], "type": rel_type})
 
         if entities or relations:
@@ -369,7 +374,8 @@ class KnowledgeGraphService:
                     continue
                 stmt = select(KGEntity).where(KGEntity.session_id == message.session_id, KGEntity.name == name)
                 result = await self.db.execute(stmt)
-                existing = result.scalar_one_or_none()
+                # Reuse the first row when historical imports duplicated an entity.
+                existing = result.scalars().first()
                 if existing:
                     entity_map[name] = existing.id
                 else:

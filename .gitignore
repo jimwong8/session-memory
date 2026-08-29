@@ -1,47 +1,9 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-dist/
-*.egg
-
-# Environment
-.env
-.env.local
-.env.production
-*.bak*
-*.bak*-*
-
-# Logs & Data
-logs/
-backups/
-data/redis/
-data/postgres/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Docker
-.docker/
-
-# Runtime data (never backup)
-data/
-logs/
-backups/
-*.bak
-*.bak-*
-__pycache__/
-.cron/
-*.pyc
-_debug_chat.py
-src/_debug_*.py
-src/services/*.orig
-scripts/fix_routes*.py
+*.log
+*.out
+*.json
+*.orig
+*.rej
+*.py.old
+.repair-backups/
+src/services/pyramid/.repair-backups/
+nohup.out

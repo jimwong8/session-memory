@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Generate audit JSON files for Dashboard from live DB."""
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,28 +10,21 @@ AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 def now():
     return datetime.now(timezone.utc).isoformat()
 
-conn = psycopg2.connect("postgresql://postgres:postgres@postgres:5432/session_memory")
+conn = psycopg2.connect("postgresql://postgres:***@postgres:5432/session_memory")
 cur = conn.cursor()
 
 def q(sql):
-    """Query single value."""
     cur.execute(sql)
     return cur.fetchone()[0]
 
-# Use pg_stat_user_tables estimate (n_live_tup) instead of exact count(*)
-# on the 4M-row messages table — exact count() every 60s was saturating CPU.
-# n_live_tup is unusable on this DB: autovacuum has never run, so it reported
-# 957 rows for a 4.27M-row messages table and every percentage overflowed.
-# Count messages exactly; it is the denominator for all ratios below.
-msg_count = q("SELECT count(*) FROM messages")
+# Use pg_class.reltuples estimates to avoid full-table scans under load
+msg_count = q("SELECT reltuples::bigint FROM pg_class WHERE relname='messages'")
+embed_done = q("SELECT reltuples::bigint FROM pg_class WHERE relname='idx_msg_embed'")
 session_count = q("SELECT count(*) FROM sessions")
 atom_active = q("SELECT count(*) FROM memory_atoms WHERE superseded_by IS NULL")
 rel_total = q("SELECT count(*) FROM kg_relations")
 rel_valid = q("SELECT count(*) FROM kg_relations WHERE invalid_at IS NULL")
 
-# KG progress must come from kg_jobs (the real queue), not from messages
-# metadata: the metadata predicates counted 3.4M "pending" while kg_jobs held
-# ~1.56M, and kg_done/kg_dead were effectively frozen.
 cur.execute("SELECT status, count(*) FROM kg_jobs GROUP BY status")
 _kg = {row[0]: row[1] for row in cur.fetchall()}
 kg_pending = _kg.get("pending", 0)
@@ -46,16 +38,10 @@ def _pct(part, whole):
         return 0.0
     return round(part * 100.0 / whole, 2)
 
-embed_done = q("SELECT count(*) FROM messages WHERE embedding IS NOT NULL")
 embed_pct = _pct(embed_done, msg_count)
-try:
-    m3_done = q("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL")
-except Exception:
-    conn.rollback()
-    m3_done = 0
-m3_pct = _pct(m3_done, msg_count)
+m3_done = 0
+m3_pct = 0.0
 
-# Oldest pending job age, so the capacity panel stops reporting a constant 0.
 try:
     kg_oldest_age = q("SELECT COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at)))::bigint, 0) FROM kg_jobs WHERE status='pending'")
 except Exception:
@@ -123,7 +109,7 @@ save("audit_shared_memory_latest.json", {
 
 save("audit_ai_ops_latest.json", {
     "status": "ok", "generated_at": now(), "issues": [],
-    "summary": "KG: %d pending / %d done / %d failed / %d deadletter. DB: %d msgs / %d sessions. Embedding: %d (%.2f%%)." % (kg_pending, kg_done, kg_failed, kg_dead, msg_count, session_count, embed_done, embed_pct),
+    "summary": "KG: %d pending / %d done / %d failed / %d deadletter. DB: %d msgs / %d sessions. Embedding: %d (%.2f%%). [estimated via reltuples]" % (kg_pending, kg_done, kg_failed, kg_dead, msg_count, session_count, embed_done, embed_pct),
     "risk_level": "ok", "recommended_actions": [], "model_used": "Gemma-4-E2B", "error": None,
 })
 
@@ -132,7 +118,6 @@ save("audit_opencode_runtime_latest.json", {
     "flagged_sessions": [], "repeat_offender_sessions": [], "repeat_offender_actions": [],
     "sqlite": None, "plugin_state": None, "logs": None, "error_classes": {},
 })
-
 
 save("audit_summary_latest.json", {
     "generated_at": now(), "overall": {"status": "ok"},
@@ -145,6 +130,6 @@ save("audit_summary_latest.json", {
     ],
 })
 
-print("Generated %d audit files: msgs=%d sessions=%d kg_pending=%d done=%d dead=%d" % (
-    len(list(AUDIT_DIR.glob("*.json"))), msg_count, session_count, kg_pending, kg_done, kg_dead))
+print("Generated %d audit files: msgs=%d(est) embed=%d(est) sessions=%d kg_pending=%d done=%d dead=%d" % (
+    len(list(AUDIT_DIR.glob("*.json"))), msg_count, embed_done, session_count, kg_pending, kg_done, kg_dead))
 conn.close()

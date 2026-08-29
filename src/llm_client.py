@@ -10,6 +10,7 @@ from openai import OpenAI
 
 from src.config import settings
 from src.cache import cache
+from src.tokenizer import count_tokens
 from src.metrics import LLM_ROUTE_HIT_TOTAL, LLM_ROUTE_FAIL_TOTAL, LLM_ROUTE_FALLBACK_TOTAL, LLM_ROUTE_CIRCUIT_OPEN_TOTAL
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,9 @@ def _get_client(*, api_key: str, base_url: str) -> OpenAI:
     key = (api_key, base_url)
     client = _clients.get(key)
     if client is None:
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        # 150s hard timeout per request: zhipu glm-4-flash needs ~90s for pyramid
+        # extraction (edgefn dead 403, so GLM is the only live route now).
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=150.0, max_retries=1)
         _clients[key] = client
     return client
 
@@ -52,6 +55,30 @@ def _backup_model_config() -> dict[str, str] | None:
         'base_url': settings.backup_openai_base_url,
         'openai_model': settings.backup_openai_model,
         'summary_model': settings.backup_summary_model or settings.backup_openai_model,
+    }
+
+
+def _kg_local_model_config() -> dict[str, str] | None:
+    """Local OpenAI-compatible route reserved for KG extraction."""
+    if not (settings.kg_local_openai_base_url and settings.kg_local_openai_model):
+        return None
+    return {
+        "api_key": settings.kg_local_openai_api_key or "local-mi50",
+        "base_url": settings.kg_local_openai_base_url,
+        "openai_model": settings.kg_local_openai_model,
+        "summary_model": settings.kg_local_openai_model,
+    }
+
+
+def _zhipu_model_config() -> dict[str, str] | None:
+    """Independent GLM fallback reserved for KG extraction."""
+    if not settings.zhipu_api_key:
+        return None
+    return {
+        "api_key": settings.zhipu_api_key,
+        "base_url": settings.zhipu_base_url,
+        "openai_model": settings.zhipu_model,
+        "summary_model": settings.zhipu_model,
     }
 
 
@@ -123,8 +150,18 @@ def _select_route_for_task(task_type: str | None) -> list[dict] | None:
     backup = _backup_model_config()
     tertiary = _tertiary_model_config()
     quaternary = _quaternary_model_config()
+    kg_local = _kg_local_model_config()
+    zhipu = _zhipu_model_config()
     mode = getattr(settings, 'llm_routing_mode', 'fallback')
     preference = _TASK_ROUTE_MAP[task_type]
+    # Keep KG extraction isolated from normal chat routing.
+    # Prefer the local MI50 vLLM route, then GLM, then legacy edgefn fallbacks.
+    if task_type == "kg_extract" and (kg_local or zhipu):
+        routes = []
+        for route in (kg_local, zhipu, tertiary, backup, primary):
+            if route and route not in routes:
+                routes.append(route)
+        return routes
     if mode == 'load_balance':
         # load_balance: round-robin across all 3 models
         routes = [primary]
@@ -134,15 +171,31 @@ def _select_route_for_task(task_type: str | None) -> list[dict] | None:
             routes.append(tertiary)
         if quaternary:
             routes.append(quaternary)
-        return routes
-    # fallback mode
-    if preference == "backup" and backup:
+    elif preference == "backup" and backup:
+        routes = [backup]
         if tertiary:
-            return [backup, tertiary, primary]
-        return [backup, primary]
-    if tertiary:
-        return [primary, tertiary]
-    return [primary]
+            routes.append(tertiary)
+        routes.append(primary)
+    elif tertiary:
+        routes = [primary, tertiary]
+    else:
+        routes = [primary]
+
+    # Dedup, then append the verified Zhipu/GLM route as a live fallback so that
+    # chat / persona / atom / scenario tasks (pyramid worker) still work even
+    # though the edgefn routes are all 403 (open circuit). MI50 (kg_local) is
+    # intentionally NOT appended here — it is reserved for KG extraction only.
+    deduped: list[dict] = []
+    # Pyramid tasks (persona/atom/scenario/bridge/entity/synthesize): prefer the
+    # verified zhipu route FIRST since all edgefn keys are dead (403 InvalidToken).
+    if zhipu and task_type in ("persona", "atom_build", "scenario_build", "bridge", "entity_expansion", "synthesize"):
+        deduped.append(zhipu)
+    for route in routes:
+        if route and route not in deduped:
+            deduped.append(route)
+    if zhipu and zhipu not in deduped:
+        deduped.append(zhipu)
+    return deduped
 
 
 # ── Convenience functions ──────────────────────────────────
@@ -378,9 +431,42 @@ async def chat_completion(
     # Task-based routing
     route_override = _select_route_for_task(task_type)
     if route_override:
-        routes = route_override
+        routes = list(route_override)
     else:
-        routes = _route_text_configs('chat')
+        routes = list(_route_text_configs('chat'))
+    # Prefer the local MI50 vLLM route for SHORT inputs only (it has an 8192-token
+    # context). Long inputs (pyramid atom/persona material, 8000+ tokens) must go
+    # to Zhipu/GLM (128k context) — otherwise MI50 returns 400 and we waste a
+    # round-trip before falling back anyway.
+    kg_local = _kg_local_model_config()
+    zhipu = _zhipu_model_config()
+    rough_input = sum(count_tokens(str(m.get("content", ""))) for m in messages)
+    preferred = []
+    # Pyramid tasks (atom_build / scenario_build / persona / bridge / entity /
+    # synthesize) ALWAYS go to the FREE local MI50 llama.cpp route (:8081,
+    # clamped n_ctx=2048) FIRST. atom_builder.py truncates their inputs to 1700
+    # tokens, so they always fit :8081 and never need the overloaded/timeout-prone
+    # GLM route. This is the core fix for the auto-persona watchdog failures:
+    # previously every pyramid call hit GLM (which times out 150s under the
+    # concurrent cron load) or fell back to dead edgefn keys -> 0 atoms extracted.
+    _local_first_tasks = {"atom_build", "scenario_build", "persona",
+                          "bridge", "entity_expansion", "synthesize"}
+    # Pyramid tasks need RELIABLE JSON output. MI50 (:8081) is free but
+    # intermittently returns truncated/malformed JSON (no exception raised),
+    # which then fails JSON parsing in the caller and yields 0 atoms with NO
+    # fallback. Zhipu/GLM is the reliable-JSON route, so it goes FIRST; MI50
+    # remains a free fallback only.
+    if task_type in _local_first_tasks:
+        if zhipu:
+            preferred.append(zhipu)
+        if kg_local:
+            preferred.append(kg_local)
+    else:
+        if kg_local and (rough_input + max_tokens) <= 1900:
+            preferred.append(kg_local)
+        if zhipu:
+            preferred.append(zhipu)
+    routes = preferred + [r for r in routes if r not in preferred]
     attempted = 0
     for route in routes:
         if not _route_available(route, operation='chat'):

@@ -3,6 +3,54 @@
 import asyncio
 import hashlib
 import json
+import json
+import json_repair  # robust LLM-JSON repair (nested unescaped quotes)
+
+def repair_llm_json(s: str) -> str:
+    """Repair common LLM-JSON defects (unescaped inner quotes, trailing commas,
+    unclosed strings) via a small state machine so json.loads can parse it."""
+    out = []
+    i = 0
+    n = len(s)
+    in_string = False
+    while i < n:
+        c = s[i]
+        if not in_string:
+            out.append(c)
+            if c == '"':
+                in_string = True
+            i += 1
+            continue
+        # inside a string
+        if c == '\\':
+            out.append(c)
+            if i + 1 < n:
+                out.append(s[i + 1])
+                i += 2
+            else:
+                i += 1
+            continue
+        if c == '"':
+            # peek ahead skipping whitespace to find the structural closer
+            j = i + 1
+            while j < n and s[j] in " \t\r\n":
+                j += 1
+            nxt = s[j] if j < n else ''
+            if nxt in (',', ':', '}', ']', ''):
+                out.append('"')
+                in_string = False
+                i += 1
+                continue
+            else:
+                # unescaped inner quote -> escape it
+                out.append('\\"')
+                i += 1
+                continue
+        out.append(c)
+        i += 1
+    if in_string:
+        out.append('"')
+    return ''.join(out)
 import logging
 import uuid
 from collections.abc import Sequence
@@ -18,6 +66,7 @@ from src.llm_client import chat_completion
 from src.models import MemoryAtom, Message, Session
 from src.services.pyramid.extractor_prompt import build_messages
 from src.services.pyramid.triggers import TriggerEvaluator
+from src.tokenizer import count_tokens, truncate_to_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +206,16 @@ class AtomBuilder:
             lines.append(f"[{i}] [{role_label}]\n{content}")
         messages_text = "\n---\n".join(lines)
 
+        # The live pyramid LLM route (local MI50 llama.cpp :8081) clamps to
+        # n_ctx=2048. Keep a hard budget well under that so extraction never
+        # returns HTTP 400 (exceeds context) -> which previously forced every
+        # pyramid call to fall through to the slow/overloaded GLM route.
+        _MAX_INPUT_TOKENS = 1700
+        _in_tokens = count_tokens(messages_text)
+        if _in_tokens > _MAX_INPUT_TOKENS:
+            messages_text = truncate_to_tokens(messages_text, _MAX_INPUT_TOKENS)
+            logger.debug("atom input truncated %d->%d tokens", _in_tokens, _MAX_INPUT_TOKENS)
+
         # 构建 LLM 调用
         llm_messages = build_messages(messages_text, len(filtered))
 
@@ -166,6 +225,7 @@ class AtomBuilder:
                 messages=llm_messages,
                 temperature=0.3,
                 max_tokens=4096,
+                task_type="atom_build",
             )
         except Exception as exc:
             logger.warning("atom extraction failed")
@@ -192,20 +252,48 @@ class AtomBuilder:
         try:
             items = json.loads(reply)
         except json.JSONDecodeError:
-            # 尝试找第一个 [ 到最后一个 ]
+            # The LLM (even GLM) sometimes emits structurally-broken JSON:
+            #   - unescaped inner double-quotes inside a string value
+            #   - truncated stream (max_tokens cut mid-JSON)
+            # Repair the most common defects before giving up.
             start = reply.find("[")
-            end = reply.rfind("]")
-            if start >= 0 and end > start:
-                try:
-                    items = json.loads(reply[start : end + 1])
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning("atom extraction failed")
-                    logger.error("JSON parse failed: %s...", reply[:200])
-                    return []
-            else:
+            if start < 0:
                 logger.warning("atom extraction failed")
                 logger.error("No JSON array found in response: %s...", reply[:200])
                 return []
+            end = reply.rfind("]")
+            # Try the full (or interior-sliced) text, first as-is, then repaired.
+            candidates = []
+            if end > start:
+                candidates.append(reply[start : end + 1])
+            candidates.append(repair_llm_json(reply))
+            if end > start:
+                candidates.append(repair_llm_json(reply[start : end + 1]))
+            # Truncated-array fallback: wrap the last complete {...} object.
+            last_obj = reply.rfind("}")
+            if last_obj > start:
+                candidates.append(reply[start : last_obj + 1].rstrip(",") + "]")
+                candidates.append(repair_llm_json(reply[start : last_obj + 1].rstrip(",") + "]"))
+            for cand in candidates:
+                try:
+                    items = json.loads(cand)
+                    break
+                except (json.JSONDecodeError, ValueError):
+                    continue
+            else:
+                # FINAL recovery: json_repair handles nested unescaped inner
+                # quotes (e.g. content containing os.environ.get("X", "y"))
+                # which the hand-rolled repair above cannot fix. This was the
+                # root cause of 0-atom extractions in production.
+                try:
+                    items = json_repair.repair_json(reply, return_objects=True)
+                except Exception as exc:  # pragma: no cover
+                    logger.error("json_repair failed: %s", exc)
+                    items = None
+                if not isinstance(items, list):
+                    logger.warning("atom extraction failed")
+                    logger.error("JSON parse failed (recovery exhausted): %s...", reply[:200])
+                    return []
 
         if not isinstance(items, list):
             return []

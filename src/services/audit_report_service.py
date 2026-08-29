@@ -127,6 +127,11 @@ def _build_kg(data: dict | None) -> AuditKGSummary:
         kg_fail_json_extract=data.get("kg_fail_json_extract", 0),
         kg_fail_429=data.get("kg_fail_429", 0),
         kg_success=data.get("kg_success", 0),
+        kg_pending=data.get("kg_pending", 0),
+        kg_failed=data.get("kg_failed", 0),
+        kg_deadletter=data.get("kg_deadletter", 0),
+        kg_running=data.get("kg_running", 0),
+        source=data.get("source"),
     )
 
 
@@ -149,6 +154,12 @@ def _build_capacity(data: dict | None) -> AuditCapacitySummary:
         kg_jobs_deadletter=data.get("kg_jobs_deadletter", 0),
         kg_jobs_oldest_pending_age_seconds=data.get("kg_jobs_oldest_pending_age_seconds", 0),
         alert_severity=data.get("alert_severity", "ok"),
+        embed_pct=float(data.get("embed_pct") or 0),
+        m3_pct=float(data.get("m3_pct") or 0),
+        embed_done=data.get("embed_done", 0),
+        m3_done=data.get("m3_done", 0),
+        kg_jobs_completed=data.get("kg_jobs_completed", 0),
+        kg_jobs_failed=data.get("kg_jobs_failed", 0),
     )
 
 

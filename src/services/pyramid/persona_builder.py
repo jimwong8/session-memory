@@ -69,7 +69,8 @@ class PersonaBuilder:
                     {"role": "user", "content": f"请根据以下材料构建用户画像：\n\n{material}"},
                 ],
                 temperature=0.4,
-                max_tokens=4096,
+                max_tokens=2000,
+                task_type="persona",
             )
         except Exception as exc:
             logger.error("[%s] LLM persona build failed: %s", user_id, exc)

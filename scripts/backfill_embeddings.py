@@ -4,7 +4,7 @@ import os, sys, json, time
 os.chdir("/app")
 
 import torch
-torch.set_num_threads(24)
+torch.set_num_threads(8)
 
 from transformers import BertTokenizer, BertModel, BertConfig
 import psycopg2
@@ -17,7 +17,9 @@ MAX_TOTAL = int(os.environ.get("BACKFILL_MAX", "220000"))
 
 print(f"Loading {MODEL_PATH} (threads={torch.get_num_threads()})...", flush=True)
 tokenizer = BertTokenizer(vocab_file=os.path.join(MODEL_PATH, "vocab.txt"))
-state = torch.load(os.path.join(MODEL_PATH, "pytorch_model.bin"), map_location='cpu')
+from safetensors.torch import load_file as sf_load
+state = sf_load(os.path.join(MODEL_PATH, "model.safetensors"))
+state.pop("embeddings.position_ids", None)
 with open(os.path.join(MODEL_PATH, "config.json")) as f:
     cfg = json.load(f)
 config = BertConfig(**cfg)

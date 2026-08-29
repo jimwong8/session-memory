@@ -42,9 +42,11 @@ class SessionService:
         metadata = data.metadata_json or {}
         if data.role not in ("user", "assistant"):
             return None
-        if metadata.get("source") != "session-memory-auto":
-            return None
-        if metadata.get("event") != "message.updated":
+        source = metadata.get("source")
+        original_id = metadata.get("original_id")
+        if source and original_id:
+            return {"source": str(source), "original_id": str(original_id)}
+        if source != "session-memory-auto" or metadata.get("event") != "message.updated":
             return None
 
         opencode_message_id = metadata.get("opencode_message_id")
@@ -66,14 +68,20 @@ class SessionService:
         if not identity:
             return None
 
-        stmt = select(Message).where(
-            Message.session_id == session_id,
-            Message.role == data.role,
-            func.jsonb_extract_path_text(Message.metadata_json, "source") == "session-memory-auto",
-            func.jsonb_extract_path_text(Message.metadata_json, "event") == "message.updated",
-            func.jsonb_extract_path_text(Message.metadata_json, "opencode_message_id") == identity["opencode_message_id"],
-            func.jsonb_extract_path_text(Message.metadata_json, "content_hash") == identity["content_hash"],
-        )
+        predicates = [Message.session_id == session_id, Message.role == data.role]
+        if "source" in identity:
+            predicates.extend([
+                func.jsonb_extract_path_text(Message.metadata_json, "source") == identity["source"],
+                func.jsonb_extract_path_text(Message.metadata_json, "original_id") == identity["original_id"],
+            ])
+        else:
+            predicates.extend([
+                func.jsonb_extract_path_text(Message.metadata_json, "source") == "session-memory-auto",
+                func.jsonb_extract_path_text(Message.metadata_json, "event") == "message.updated",
+                func.jsonb_extract_path_text(Message.metadata_json, "opencode_message_id") == identity["opencode_message_id"],
+                func.jsonb_extract_path_text(Message.metadata_json, "content_hash") == identity["content_hash"],
+            ])
+        stmt = select(Message).where(*predicates)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -81,11 +89,27 @@ class SessionService:
         """创建新会话（对 opencode_session_id 做幂等保护）"""
         metadata = data.metadata_json or {}
         opencode_session_id = metadata.get("opencode_session_id")
+        source = metadata.get("source")
+        original_session_id = metadata.get("original_session_id")
+
+        # All imported clients must be idempotent. Protect Hermes and other
+        # sources, not only OpenCode, against duplicate sessions on restart.
+        identity_filters = []
         if opencode_session_id:
+            identity_filters.append(
+                func.jsonb_extract_path_text(Session.metadata_json, "opencode_session_id") == str(opencode_session_id)
+            )
+        if source and original_session_id:
+            identity_filters.append(
+                (func.jsonb_extract_path_text(Session.metadata_json, "source") == str(source))
+                & (func.jsonb_extract_path_text(Session.metadata_json, "original_session_id") == str(original_session_id))
+            )
+        if identity_filters:
+            from sqlalchemy import or_
             stmt = (
                 select(Session)
                 .where(Session.user_id == data.user_id)
-                .where(func.jsonb_extract_path_text(Session.metadata_json, "opencode_session_id") == str(opencode_session_id))
+                .where(or_(*identity_filters))
                 .order_by(Session.updated_at.desc())
                 .limit(1)
             )
@@ -103,11 +127,12 @@ class SessionService:
             await self.db.commit()
         except IntegrityError:
             await self.db.rollback()
-            if opencode_session_id:
+            if identity_filters:
+                from sqlalchemy import or_
                 stmt = (
                     select(Session)
                     .where(Session.user_id == data.user_id)
-                    .where(func.jsonb_extract_path_text(Session.metadata_json, "opencode_session_id") == str(opencode_session_id))
+                    .where(or_(*identity_filters))
                     .order_by(Session.updated_at.desc())
                     .limit(1)
                 )
@@ -220,12 +245,17 @@ class SessionService:
         if compression_stats["compressed"]:
             metadata["compression"] = compression_stats
 
-        should_enqueue_kg = data.role in ("user", "assistant") and len(compressed_content or "") >= 50
+        skip_kg = metadata.get("skip_kg") in (True, "true", "True", "1", 1)
+        should_enqueue_kg = (
+            data.role in ("user", "assistant")
+            and len(compressed_content or "") >= 50
+            and not skip_kg
+        )
         if data.role in ("user", "assistant"):
             metadata["kg_extract_pending"] = bool(should_enqueue_kg)
-            metadata["kg_extract_status"] = "pending" if should_enqueue_kg else "skipped_short"
+            metadata["kg_extract_status"] = "pending" if should_enqueue_kg else ("skipped_requested" if skip_kg else "skipped_short")
             metadata["kg_extract_attempts"] = 0
-            metadata["kg_extract_error"] = None if should_enqueue_kg else "content_too_short"
+            metadata["kg_extract_error"] = None if should_enqueue_kg else ("skip_kg_requested" if skip_kg else "content_too_short")
             metadata["kg_extract_next_attempt_at"] = None
         message = Message(
             session_id=session_id,

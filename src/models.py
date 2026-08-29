@@ -75,7 +75,7 @@ class Message(Base):
     )
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(384), nullable=True
+        Vector(768), nullable=True
     )
 
     session: Mapped["Session"] = relationship(back_populates="messages")
@@ -266,7 +266,7 @@ class MemoryAtom(Base):
     source_message_ids: Mapped[list | None] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=False, default=list
     )
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
     confidence_score: Mapped[float | None] = mapped_column(Float, default=0.8)
     sensitivity_level: Mapped[str] = mapped_column(String(16), default="normal", nullable=False)
     dedup_signature: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -300,7 +300,7 @@ class MemoryScenario(Base):
     session_ids: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True, default=list)
     period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

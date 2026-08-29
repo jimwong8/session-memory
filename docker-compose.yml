@@ -52,7 +52,7 @@ services:
       resources:
         limits:
           cpus: "24.0"
-          memory: 4G
+          memory: 8G
         reservations:
           cpus: "2.0"
           memory: 1G
@@ -64,6 +64,8 @@ services:
     - BACKFILL_MAX=220000
     image: session-memory-api
     restart: 'no'
+    profiles:
+      - disabled
     volumes:
     - ./src:/app/src
     - ./scripts:/app/scripts
@@ -89,7 +91,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 8G
         reservations:
           cpus: '0.5'
           memory: 512M
@@ -106,6 +108,7 @@ services:
       - pg_isready -U postgres
       timeout: 5s
     image: pgvector/pgvector:pg16
+    shm_size: 2gb
     ports:
     - 5432:5432
     restart: unless-stopped
@@ -116,7 +119,8 @@ services:
     command:
     - --config.file=/etc/prometheus/prometheus.yml
     - --storage.tsdb.path=/prometheus
-    - --storage.tsdb.retention.time=30d
+    - --storage.tsdb.retention.time=15d
+    - --storage.tsdb.retention.size=5GB
     container_name: session_memory_prometheus
     depends_on:
     - api
@@ -142,7 +146,7 @@ services:
       resources:
         limits:
           cpus: "24.0"
-          memory: 2G
+          memory: 8G
         reservations:
           cpus: '0.25'
           memory: 256M
@@ -156,6 +160,7 @@ services:
     volumes:
     - ./src:/app/src
     - ./scripts:/app/scripts
+    - ./data/models:/models
   redis:
     command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
     container_name: session_memory_redis
@@ -163,7 +168,7 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 2G
+          memory: 8G
         reservations:
           cpus: '0.25'
           memory: 256M

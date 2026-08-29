@@ -159,7 +159,9 @@ class RedisCache:
     async def get_llm_route_metric_map(self, metric: str) -> dict[str, int]:
         pattern = f"llm:route:{metric}:*"
         result: dict[str, int] = {}
-        async for key in self.client.scan_iter(match=pattern):
+        # KEYS is faster than SCAN here: with ~900k keys in Redis, scan_iter
+        # takes 10-30s per pattern and dashboard calls this 8x per request.
+        for key in await self.client.keys(pattern):
             value = await self.client.get(key)
             try:
                 count = int(value or 0)
@@ -182,7 +184,7 @@ class RedisCache:
         bucket = datetime.now(timezone.utc).strftime('%Y%m%d%H')
         pattern = f"llm:route:window:{bucket}:{metric}:*"
         result: dict[str, int] = {}
-        async for key in self.client.scan_iter(match=pattern):
+        for key in await self.client.keys(pattern):
             value = await self.client.get(key)
             try:
                 count = int(value or 0)

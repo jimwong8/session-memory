@@ -158,6 +158,10 @@ class KeywordSearcher:
             rows = result.all()
         except Exception as exc:
             logger.warning("keyword search failed on %s: %s", table, exc)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
             return []
 
         hits = []
@@ -193,8 +197,16 @@ class VectorSearcher:
             embedding = await create_embedding(query)
         except Exception as exc:
             logger.warning("vector search embedding failed: %s", exc)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
             return []
 
+        if not embedding:
+            logger.info("vector search skipped: embedding unavailable")
+            return []
+        dim = len(embedding)
         emb_str = "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
 
         conditions = []
@@ -212,15 +224,20 @@ class VectorSearcher:
             FROM {table}
             WHERE {where}
               AND embedding IS NOT NULL
+              AND vector_dims(embedding) = :dim
             ORDER BY embedding <=> '{emb_str}'::vector
             LIMIT :lim
         """)
 
         try:
-            result = await self.db.execute(sql.bindparams(lim=limit))
+            result = await self.db.execute(sql.bindparams(lim=limit, dim=dim))
             rows = result.all()
         except Exception as exc:
             logger.warning("vector search failed on %s: %s", table, exc)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
             return []
 
         return [
@@ -275,6 +292,10 @@ class EntitySearcher:
             entity_rows = ent_result.all()
         except Exception as exc:
             logger.warning("entity search failed: %s", exc)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
             return []
 
         if not entity_rows:
@@ -301,6 +322,10 @@ class EntitySearcher:
             rows = msg_result.all()
         except Exception as exc:
             logger.warning("entity-boosted message search failed: %s", exc)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
             return []
 
         hits = []
@@ -383,6 +408,12 @@ async def hybrid_recall(
         except Exception as exc:
             errors.append(f"{name}: {exc}")
             logger.debug("ranker %s failed (continuing): %s", name, exc)
+            # A failed search may leave the shared session in a broken transaction;
+            # roll back so subsequent searches on the same session can proceed.
+            try:
+                await db.rollback()
+            except Exception as rb_exc:
+                logger.debug("hybrid_recall rollback failed after %s: %s", name, rb_exc)
 
     if errors:
         logger.debug("recall partial errors: %s", "; ".join(errors))

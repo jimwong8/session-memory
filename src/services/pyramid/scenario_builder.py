@@ -120,7 +120,8 @@ class ScenarioBuilder:
                     {"role": "user", "content": f"请根据以下 {len(atoms)} 个记忆原子总结场景：\n\n{atom_text}"},
                 ],
                 temperature=0.3,
-                max_tokens=2048,
+                max_tokens=1024,
+                task_type="scenario_build",
             )
         except Exception as exc:
             logger.warning("LLM scenario build failed: %s", exc)

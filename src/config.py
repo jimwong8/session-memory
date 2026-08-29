@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     redis_cache_ttl: int = 3600
 
     embedding_provider: str = "local"
-    embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    embedding_dimensions: int = 1024
+    embedding_model: str = "/models/bge-base-zh-v1.5"
+    embedding_dimensions: int = 768
 
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     backup_openai_api_key: str = ""
     backup_openai_base_url: str = ""
     backup_openai_model: str = ""
+    # Dedicated local route for KG extraction; does not affect chat/embedding.
+    kg_local_openai_api_key: str = "local-mi50"
+    kg_local_openai_base_url: str = ""
+    kg_local_openai_model: str = ""
+    # Dedicated fallback for structured KG extraction; does not affect chat/embedding.
+    zhipu_api_key: str = ""
+    zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    zhipu_model: str = "glm-4-flash"
     llm_routing_mode: str = "fallback"
     llm_route_failure_threshold: int = 3
     llm_route_cooldown_seconds: int = 300

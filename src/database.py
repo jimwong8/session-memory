@@ -39,9 +39,16 @@ def _reset_connection(dbapi_connection, connection_record):
 
 
 async def get_db() -> AsyncSession:  # type: ignore[misc]
-    """获取数据库会话的依赖注入"""
+    """获取数据库会话的依赖注入；异常时显式 rollback，避免连接池污染。"""
     async with async_session() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            if session.in_transaction():
+                await session.rollback()
 
 
 async def init_db() -> None:

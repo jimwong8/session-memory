@@ -310,6 +310,13 @@ class AuditKGSummary(AuditSectionBase):
     kg_fail_json_extract: int = 0
     kg_fail_429: int = 0
     kg_success: int = 0
+    # Real kg_jobs queue breakdown (undeclared fields were silently dropped by
+    # pydantic, which is why the dashboard showed None / stale zeros).
+    kg_pending: int = 0
+    kg_failed: int = 0
+    kg_deadletter: int = 0
+    kg_running: int = 0
+    source: str | None = None
 
 class AuditCapacitySummary(AuditSectionBase):
     total_messages: int = 0
@@ -318,6 +325,14 @@ class AuditCapacitySummary(AuditSectionBase):
     kg_jobs_deadletter: int = 0
     kg_jobs_oldest_pending_age_seconds: int = 0
     alert_severity: str = "ok"
+    # Embedding coverage + completed/failed counts, so the capacity panel can
+    # show real progress instead of a hardcoded 0.
+    embed_pct: float = 0.0
+    m3_pct: float = 0.0
+    embed_done: int = 0
+    m3_done: int = 0
+    kg_jobs_completed: int = 0
+    kg_jobs_failed: int = 0
 
 class AuditAlertsSummary(AuditSectionBase):
     checks_evaluated: int = 0

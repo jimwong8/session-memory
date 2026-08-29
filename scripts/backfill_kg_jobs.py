@@ -114,7 +114,7 @@ async def main():
                 msg = await db.get(Message, message_id)
                 if not msg:
                     await db.execute(update(KGJob).where(KGJob.id == job_id).values(
-                        status='dead_letter',
+                        status='deadletter',
                         last_error='message_not_found',
                         locked_at=None,
                         locked_by=None,
@@ -138,7 +138,7 @@ async def main():
 
                 if result.get('ok') or result.get('noop'):
                     await db.execute(update(KGJob).where(KGJob.id == job_id).values(
-                        status='succeeded',
+                        status='completed',
                         attempts=attempts,
                         last_error=None,
                         locked_at=None,
@@ -160,7 +160,7 @@ async def main():
                         break
                     if should_deadletter(reason, attempts):
                         await db.execute(update(KGJob).where(KGJob.id == job_id).values(
-                            status='dead_letter',
+                            status='deadletter',
                             attempts=attempts,
                             last_error=reason,
                             available_at=now,

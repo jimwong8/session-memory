@@ -1,265 +1,869 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Session Memory 系统全景</title>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Session Memory Console</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
+:root{--bg:#0f172a;--surface:#1e293b;--surface2:#334155;--text:#f1f5f9;--text2:#94a3b8;--border:#475569;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;--indigo:#6366f1}
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f172a;--surface:#1e293b;--surface2:#334155;--text:#f1f5f9;--text2:#94a3b8;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;--border:#475569}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px}
-.header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface)}
-.header h1{font-size:20px;font-weight:700;background:linear-gradient(90deg,var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.header-right{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text2)}
-.tabs{display:flex;gap:2px;padding:8px 24px 0;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
-.tab-btn{padding:10px 18px;cursor:pointer;font-size:12px;border:none;background:transparent;color:var(--text2);border-radius:8px 8px 0 0;transition:all .2s;white-space:nowrap}
-.tab-btn:hover{color:var(--text);background:rgba(255,255,255,.05)}
-.tab-btn.active{color:var(--text);background:var(--bg);font-weight:600;border:1px solid var(--border);border-bottom:none}
-.tab-content{display:none;padding:20px 24px;max-width:1400px;margin:0 auto}
-.tab-content.active{display:block}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
-.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh}
 .card{background:linear-gradient(135deg,var(--surface),var(--surface2));border-radius:12px;padding:16px;border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,0,0,.3)}
-.card-title{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
-.stat-value{font-size:28px;font-weight:700;margin:4px 0}
-.stat-label{font-size:11px;color:var(--text2)}
-.stat-sub{font-size:10px;color:var(--text2);margin-top:4px}
-.bar-bg{height:8px;background:rgba(0,0,0,.3);border-radius:4px;overflow:hidden;margin-top:8px}
-.bar-fg{height:100%;border-radius:4px;transition:width .6s}
-.model-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(71,85,105,.4)}
-.model-row:last-child{border-bottom:none}
-.model-name{flex:1;font-size:12px;min-width:120px;font-weight:500}
-.model-bar{display:flex;height:22px;border-radius:4px;overflow:hidden;background:rgba(0,0,0,.3);flex:2;min-width:100px}
-.model-hits{background:linear-gradient(90deg,#22c55e,#16a34a)}
-.model-fails{background:linear-gradient(90deg,#ef4444,#dc2626)}
-.model-stats{font-size:11px;color:var(--text2);min-width:90px;text-align:right}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:.375rem .75rem;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
+.btn:active{transform:scale(.96)}
+.btn-primary{background:var(--blue);color:#fff}.btn-primary:hover{background:#2563eb}
+.btn-green{background:var(--green);color:#fff}.btn-green:hover{background:#16a34a}
+.btn-red{background:var(--red);color:#fff}.btn-red:hover{background:#dc2626}
+.btn-yellow{background:var(--yellow);color:#000}.btn-yellow:hover{background:#ca8a04}
+.btn-purple{background:var(--purple);color:#fff}.btn-purple:hover{background:#7c3aed}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text2)}.btn-ghost:hover{color:var(--text);border-color:var(--text2)}
+input,select,textarea{background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--blue)}
+input::placeholder{color:var(--text2);opacity:.6}
+.label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:block}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}
-.dot-yellow{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
-.dot-red{background:var(--red);box-shadow:0 0 6px var(--red)}
-.dot-blue{background:var(--blue);box-shadow:0 0 6px var(--blue)}
-.progress-ring{width:70px;height:70px;margin:0 auto 8px}
-.progress-ring circle{fill:none;stroke-width:7}
-.progress-ring .bg{stroke:var(--surface2)}
-.progress-ring .fg{stroke:url(#gradient);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 1s}
-.progress-text{text-anchor:middle;fill:var(--text);font-size:16px;font-weight:700}
-.progress-label{text-anchor:middle;fill:var(--text2);font-size:9px}
-.worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.worker-card{padding:12px;border-radius:8px;background:var(--surface2);text-align:center;border:1px solid transparent}
-.worker-card.active{border-color:var(--green);background:rgba(34,197,94,.1)}
-.worker-name{font-size:11px;color:var(--text2);margin-bottom:4px}
-.worker-status{font-size:22px}
-@media(max-width:768px){.grid2,.grid4{grid-template-columns:1fr}.header{padding:12px}.tab-content{padding:12px}}
+.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}.dot-red{background:var(--red);box-shadow:0 0 6px var(--red)}.dot-yellow{background:var(--yellow)}.dot-blue{background:var(--blue)}
+.stat-val{font-size:24px;font-weight:700;margin:4px 0}
+.stat-sub{font-size:10px;color:var(--text2);margin-top:2px}
+.bar-bg{height:6px;background:rgba(0,0,0,.3);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar-fg{height:100%;border-radius:3px;transition:width .5s}
+.nav-tab{padding:8px 14px;cursor:pointer;font-size:12px;border:none;background:transparent;color:var(--text2);border-radius:8px 8px 0 0;transition:all .15s;white-space:nowrap}
+.nav-tab:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.nav-tab.active{color:var(--text);background:var(--bg);font-weight:600;border-bottom:2px solid var(--blue)}
+.tab-content{display:none}.tab-content.active{display:block}
+.toast{position:fixed;top:20px;right:20px;z-index:999;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:all .3s}
+.toast-success{background:var(--green);color:#fff}.toast-error{background:var(--red);color:#fff}.toast-info{background:var(--blue);color:#fff}
+pre.json{background:rgba(0,0,0,.4);color:#a5f3a3;border-radius:8px;padding:10px;font-size:11px;font-family:'Fira Code',monospace;max-height:300px;overflow:auto;white-space:pre-wrap}
+.scroll-area{max-height:400px;overflow:auto}.scroll-area::-webkit-scrollbar{width:4px}.scroll-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.session-item{padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .1s;border:1px solid transparent}
+.session-item:hover{background:rgba(255,255,255,.05)}.session-item.active{background:rgba(59,130,246,.15);border-color:var(--blue)}
+.entity-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;margin:2px}
+@media(max-width:768px){.grid-cols-3{grid-template-columns:1fr}.grid-cols-4{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>Session Memory 系统全景</h1>
-  <div class="header-right">
-    <span id="updateTime">--</span>
-    <label><input type="checkbox" id="autoRefresh" checked> 自动刷新 15s</label>
-    <button onclick="loadAll()" style="background:var(--blue);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">⟳ 刷新</button>
+
+<div class="max-w-[1600px] mx-auto p-4">
+<!-- Header -->
+<div class="flex items-center justify-between mb-4">
+  <h1 style="font-size:22px;font-weight:800;background:linear-gradient(90deg,var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Session Memory Console</h1>
+  <div class="flex items-center gap-3">
+    <span id="last-updated" style="font-size:11px;color:var(--text2)">--</span>
+    <span id="overall-status" class="px-3 py-1 rounded-full font-bold text-xs">...</span>
+    <label style="font-size:11px;color:var(--text2)"><input type="checkbox" id="auto-refresh" checked> 15s</label>
+    <button onclick="loadAll()" class="btn btn-primary">⟳ 刷新</button>
   </div>
 </div>
 
-<div class="tabs">
-  <button class="tab-btn active" data-tab="overview" onclick="showTab(this)">总览</button>
-  <button class="tab-btn" data-tab="kg" onclick="showTab(this)">知识图谱</button>
-  <button class="tab-btn" data-tab="embed" onclick="showTab(this)">嵌入模型</button>
-  <button class="tab-btn" data-tab="llm" onclick="showTab(this)">LLM 路由</button>
-  <button class="tab-btn" data-tab="pyramid" onclick="showTab(this)">金字塔</button>
-  <button class="tab-btn" data-tab="system" onclick="showTab(this)">系统状态</button>
+<!-- Nav Tabs -->
+<div class="flex gap-1 mb-4 border-b" style="border-color:var(--border)">
+  <button class="nav-tab active" data-tab="dashboard" onclick="showTab(this)">运维总览</button>
+  <button class="nav-tab" data-tab="sessions" onclick="showTab(this)">会话管理</button>
+  <button class="nav-tab" data-tab="kg" onclick="showTab(this)">知识图谱</button>
+  <button class="nav-tab" data-tab="search" onclick="showTab(this)">搜索查询</button>
+  <button class="nav-tab" data-tab="recall" onclick="showTab(this)">召回操作</button>
+  <button class="nav-tab" data-tab="memory" onclick="showTab(this)">用户记忆</button>
+  <button class="nav-tab" data-tab="plugin" onclick="showTab(this)">插件状态</button>
+  <button class="nav-tab" data-tab="system" onclick="showTab(this)">系统统计</button>
 </div>
 
-<div id="tab-overview" class="tab-content active">
-  <div class="grid grid4" id="overviewStats"></div>
-  <div class="grid grid2">
+<!-- ==================== DASHBOARD ==================== -->
+<div id="tab-dashboard" class="tab-content active">
+  <!-- Ops buttons -->
+  <div class="card mb-4">
+    <div class="label">运维操作</div>
+    <div class="flex flex-wrap gap-2">
+      <button class="btn btn-green" onclick="op('run-kg-worker-once')">▶ 运行 KG Worker</button>
+      <button class="btn btn-yellow" onclick="op('requeue-kg-deadletters')">♻ 重排队死信</button>
+      <button class="btn btn-red" onclick="op('repair-stuck-session')">🔧 修复卡死会话</button>
+      <button class="btn btn-primary" onclick="op('reconcile-continuation-metrics')">📊 校准续跑指标</button>
+      <button class="btn btn-purple" onclick="op('continuation-event')">📡 续跑事件</button>
+      <button class="btn btn-ghost" onclick="refreshStats()">🔄 刷新统计</button>
+    </div>
+    <pre id="op-result" class="json mt-3" style="min-height:36px">点击按钮执行操作</pre>
+  </div>
+
+  <!-- Overview cards -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4" id="overview-cards"></div>
+
+  <!-- KG Queue + Continuation -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
     <div class="card">
-      <div class="card-title">📊 KG 提取进度</div>
-      <div id="kgProgress"></div>
+      <div class="label">KG 任务队列</div>
+      <div id="kg-queue" class="grid grid-cols-3 md:grid-cols-6 gap-2"></div>
+      <div id="kg-pending-reasons" class="text-xs mt-2" style="color:var(--text2)"></div>
     </div>
     <div class="card">
-      <div class="card-title">🧠 嵌入进度</div>
-      <div id="embedProgress"></div>
+      <div class="label">续跑状态</div>
+      <div id="cont-detail" class="text-xs space-y-1" style="font-family:monospace"></div>
+    </div>
+  </div>
+
+  <!-- Alerts + AI Ops -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div class="card">
+      <div class="label">告警与异常</div>
+      <div id="alerts-list" class="scroll-area" style="max-height:200px"></div>
+    </div>
+    <div class="card">
+      <div class="label">AI 运维建议</div>
+      <div id="ai-ops" class="text-xs space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Model Config -->
+  <div class="card mb-4">
+    <div class="flex justify-between items-center mb-3">
+      <div class="label" style="margin:0">模型配置</div>
+      <button onclick="saveConfig()" class="btn btn-primary">保存</button>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div><span class="label">聊天模型</span><input id="mc-chat" class="w-full"></div>
+      <div><span class="label">摘要模型</span><input id="mc-summary" class="w-full"></div>
+      <div><span class="label">备用聊天</span><input id="mc-backup-chat" class="w-full"></div>
+      <div><span class="label">备用摘要</span><input id="mc-backup-summary" class="w-full"></div>
+      <div><span class="label">第三聊天</span><input id="mc-tertiary-chat" class="w-full"></div>
+      <div><span class="label">第三摘要</span><input id="mc-tertiary-summary" class="w-full"></div>
+      <div><span class="label">第四聊天</span><input id="mc-quat-chat" class="w-full"></div>
+      <div><span class="label">第四摘要</span><input id="mc-quat-summary" class="w-full"></div>
+      <div><span class="label">路由模式</span><input id="mc-routing" class="w-full"></div>
+    </div>
+    <div id="mc-status" class="text-xs mt-2" style="color:var(--text2)">尚未加载</div>
+  </div>
+
+  <!-- Runtime + Routing + Capacity -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="card"><div class="label">OpenCode Runtime</div><div id="runtime" class="text-xs space-y-2"></div></div>
+    <div class="card"><div class="label">模型路由 (1h)</div><div id="routing" class="text-xs space-y-2"></div></div>
+    <div class="card"><div class="label">容量快照</div><div id="capacity" class="text-xs space-y-2"></div></div>
+  </div>
+
+  <!-- Operation History -->
+  <div class="card mt-4">
+    <div class="label">操作历史 (最近10条)</div>
+    <div id="history-list" class="space-y-2 scroll-area" style="max-height:200px"></div>
+  </div>
+
+  <!-- Raw Events Stats -->
+  <div class="card mt-4">
+    <div class="flex justify-between items-center mb-2">
+      <div class="label" style="margin:0">原始事件统计</div>
+      <button onclick="loadRawEvents()" class="btn btn-ghost text-xs">加载</button>
+    </div>
+    <pre id="raw-events" class="json">未加载</pre>
+  </div>
+</div>
+
+<!-- ==================== SESSIONS ==================== -->
+<div id="tab-sessions" class="tab-content">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Left: Session list -->
+    <div class="lg:col-span-1">
+      <div class="card mb-3">
+        <div class="flex gap-2 mb-2">
+          <input id="new-session-title" placeholder="新会话标题..." class="flex-1">
+          <button onclick="createSession()" class="btn btn-primary">创建</button>
+        </div>
+        <input id="session-search" placeholder="搜索标题..." class="w-full mb-2" oninput="filterSessions()">
+        <div id="session-list" class="space-y-1 scroll-area" style="max-height:500px"></div>
+        <div id="session-count" class="text-xs mt-2" style="color:var(--text2)"></div>
+      </div>
+    </div>
+    <!-- Right: Session detail -->
+    <div class="lg:col-span-2">
+      <div id="session-detail" class="card">
+        <div style="color:var(--text2);text-align:center;padding:40px 0">← 选择一个会话查看详情</div>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- ==================== KG ==================== -->
 <div id="tab-kg" class="tab-content">
-  <div class="grid grid4" id="kgStats"></div>
-  <div class="grid grid2">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
     <div class="card">
-      <div class="card-title">🔗 实体/关系统计</div>
-      <div id="kgBreakdown"></div>
+      <div class="label">实体列表</div>
+      <div class="flex gap-2 mb-2">
+        <select id="kg-entity-filter" onchange="loadKGEntities()" class="flex-1">
+          <option value="">全部类型</option>
+          <option value="file">file</option><option value="function">function</option>
+          <option value="error">error</option><option value="concept">concept</option>
+          <option value="person">person</option><option value="project">project</option>
+        </select>
+        <button onclick="loadKGEntities()" class="btn btn-primary">加载</button>
+      </div>
+      <div id="kg-entity-list" class="space-y-1 scroll-area" style="max-height:300px"></div>
     </div>
     <div class="card">
-      <div class="card-title">⚡ 提取活动</div>
-      <div id="kgActivity"></div>
+      <div class="label">关系列表</div>
+      <div class="flex gap-2 mb-2">
+        <input id="kg-rel-limit" type="number" value="50" min="5" max="200" class="w-24">
+        <button onclick="loadKGRelations()" class="btn btn-primary">加载</button>
+      </div>
+      <div id="kg-rel-list" class="space-y-1 scroll-area" style="max-height:300px"></div>
+    </div>
+  </div>
+
+  <!-- KG Graph -->
+  <div class="card mb-4">
+    <div class="flex justify-between items-center mb-2">
+      <div class="label" style="margin:0">KG 图谱 (力导向)</div>
+      <div class="flex gap-2 items-center">
+        <input id="kg-graph-limit" type="number" value="20" min="5" max="80" class="w-20">
+        <button onclick="loadKGGraph()" class="btn btn-primary">渲染</button>
+      </div>
+    </div>
+    <svg id="kg-graph-svg" width="100%" height="400" style="background:rgba(0,0,0,.2);border-radius:8px;border:1px solid var(--border)"></svg>
+    <div id="kg-graph-info" class="text-xs mt-1" style="color:var(--text2)"></div>
+  </div>
+
+  <!-- KG Search + Visibility -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="card">
+      <div class="label">KG 搜索</div>
+      <div class="flex gap-2 mb-2">
+        <input id="kg-search-q" placeholder="搜索实体..." class="flex-1" onkeydown="if(event.key==='Enter')searchKG()">
+        <select id="kg-search-type" class="w-28"><option value="">全部</option><option value="file">file</option><option value="function">function</option><option value="error">error</option><option value="concept">concept</option><option value="person">person</option><option value="project">project</option></select>
+        <button onclick="searchKG()" class="btn btn-primary">搜索</button>
+      </div>
+      <div id="kg-search-results" class="space-y-1 scroll-area" style="max-height:250px"></div>
+    </div>
+    <div class="card">
+      <div class="label">按可见性浏览</div>
+      <div class="flex gap-2 mb-2">
+        <select id="kg-vis-type" class="flex-1"><option value="entities">实体</option><option value="relations">关系</option><option value="graph">图谱</option></select>
+        <select id="kg-visibility" class="flex-1"><option value="team">team</option><option value="public">public</option></select>
+        <button onclick="loadKGByVisibility()" class="btn btn-primary">加载</button>
+      </div>
+      <div id="kg-vis-results" class="space-y-1 scroll-area" style="max-height:250px"></div>
+    </div>
+  </div>
+
+  <!-- Entity/Relation sessions -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <div class="card">
+      <div class="label">实体关联会话</div>
+      <div class="flex gap-2 mb-2">
+        <input id="entity-name-sessions" placeholder="实体名..." class="flex-1">
+        <button onclick="loadEntitySessions()" class="btn btn-primary">查询</button>
+      </div>
+      <div id="entity-sessions-results" class="space-y-1 scroll-area" style="max-height:200px"></div>
+    </div>
+    <div class="card">
+      <div class="label">关系类型关联会话</div>
+      <div class="flex gap-2 mb-2">
+        <input id="rel-type-sessions" placeholder="关系类型..." class="flex-1">
+        <button onclick="loadRelationSessions()" class="btn btn-primary">查询</button>
+      </div>
+      <div id="rel-sessions-results" class="space-y-1 scroll-area" style="max-height:200px"></div>
     </div>
   </div>
 </div>
 
-<div id="tab-embed" class="tab-content">
-  <div class="grid grid2">
+<!-- ==================== SEARCH ==================== -->
+<div id="tab-search" class="tab-content">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
     <div class="card">
-      <div class="card-title">📐 bge-base-zh-v1.5 (768d) - 本地 CPU</div>
-      <div id="bgeStats"></div>
+      <div class="label">全文搜索 (会话内)</div>
+      <div class="flex gap-2 mb-2">
+        <input id="search-session-id" placeholder="会话 ID (留空搜全部)" class="flex-1">
+        <input id="search-q" placeholder="关键词..." class="flex-1" onkeydown="if(event.key==='Enter')doSearch()">
+        <button onclick="doSearch()" class="btn btn-primary">搜索</button>
+      </div>
+      <div id="search-results" class="space-y-2 scroll-area" style="max-height:300px"></div>
     </div>
     <div class="card">
-      <div class="card-title">🌐 BAAI/bge-m3 (1024d) - edgefn API</div>
-      <div id="m3Stats"></div>
+      <div class="label">统一查询</div>
+      <div class="flex gap-2 mb-2">
+        <input id="query-q" placeholder="自然语言查询..." class="flex-1" onkeydown="if(event.key==='Enter')doQuery()">
+        <select id="query-temp" class="w-24"><option value="">全部</option><option value="hot">热</option><option value="warm">温</option><option value="cold">冷</option></select>
+        <button onclick="doQuery()" class="btn btn-primary">查询</button>
+      </div>
+      <pre id="query-result" class="json" style="max-height:300px">等待查询</pre>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="card">
+      <div class="label">加权搜索</div>
+      <div class="flex gap-2 mb-2">
+        <input id="weighted-q" placeholder="关键词..." class="flex-1" onkeydown="if(event.key==='Enter')doWeightedSearch()">
+        <button onclick="doWeightedSearch()" class="btn btn-primary">搜索</button>
+      </div>
+      <div id="weighted-results" class="space-y-2 scroll-area" style="max-height:250px"></div>
+    </div>
+    <div class="card">
+      <div class="label">混合搜索 (跨用户)</div>
+      <div class="flex gap-2 mb-2">
+        <input id="hybrid-user" placeholder="用户ID (默认jimwong)" class="w-40">
+        <input id="hybrid-q" placeholder="关键词..." class="flex-1" onkeydown="if(event.key==='Enter')doHybrid()">
+        <select id="hybrid-strategy" class="w-28"><option value="hybrid">混合</option><option value="keyword">关键词</option><option value="vector">向量</option></select>
+        <button onclick="doHybrid()" class="btn btn-primary">搜索</button>
+      </div>
+      <div id="hybrid-results" class="space-y-2 scroll-area" style="max-height:250px"></div>
     </div>
   </div>
 </div>
 
-<div id="tab-llm" class="tab-content">
-  <div class="card">
-    <div class="card-title">🤖 模型使用率 (Redis 累计)</div>
-    <div id="llmStats"></div>
+<!-- ==================== RECALL ==================== -->
+<div id="tab-recall" class="tab-content">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="card">
+      <div class="label">桥接搜索</div>
+      <input id="bridge-seed1" placeholder="种子消息 ID (至少1个)" class="w-full mb-2">
+      <input id="bridge-seed2" placeholder="种子消息 ID 2 (可选)" class="w-full mb-2">
+      <div class="flex gap-2 mb-2"><span class="label" style="margin:0">跳数</span><input id="bridge-hops" type="number" value="2" min="1" max="3" class="w-20"></div>
+      <button onclick="doBridge()" class="btn btn-primary w-full">搜索桥接</button>
+    </div>
+    <div class="card">
+      <div class="label">实体扩展</div>
+      <input id="expand-entities" placeholder="实体名 (逗号分隔)" class="w-full mb-2">
+      <div class="flex gap-2 mb-2"><span class="label" style="margin:0">跳数</span><input id="expand-hops" type="number" value="2" min="1" max="5" class="w-20"></div>
+      <button onclick="doExpand()" class="btn btn-primary w-full">扩展实体</button>
+    </div>
+    <div class="card">
+      <div class="label">查询分解</div>
+      <input id="decompose-q" placeholder="查询语句..." class="w-full mb-2">
+      <button onclick="doDecompose()" class="btn btn-primary w-full">分解查询</button>
+    </div>
+  </div>
+  <pre id="recall-result" class="json mt-4">等待操作</pre>
+</div>
+
+<!-- ==================== MEMORY ==================== -->
+<div id="tab-memory" class="tab-content">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+    <!-- Persona -->
+    <div class="card">
+      <div class="flex justify-between mb-2"><div class="label" style="margin:0">用户画像</div><span id="persona-version" class="text-xs" style="color:var(--text2)"></span></div>
+      <div id="persona-content" class="scroll-area" style="max-height:200px"><div style="color:var(--text2)">未加载</div></div>
+      <div class="flex gap-2 mt-2">
+        <input id="persona-uid" placeholder="用户ID" class="flex-1" value="jimwong">
+        <button onclick="loadPersona()" class="btn btn-primary text-xs">加载</button>
+      </div>
+    </div>
+    <!-- Scenarios -->
+    <div class="card">
+      <div class="label">场景叙事</div>
+      <div id="scenarios-list" class="space-y-2 scroll-area" style="max-height:250px"><div style="color:var(--text2)">未加载</div></div>
+      <div class="flex gap-2 mt-2">
+        <input id="scenarios-uid" placeholder="用户ID" class="flex-1" value="jimwong">
+        <button onclick="loadScenarios()" class="btn btn-primary text-xs">加载</button>
+      </div>
+    </div>
+    <!-- Atoms -->
+    <div class="card">
+      <div class="label">记忆原子</div>
+      <div class="flex gap-2 mb-2">
+        <select id="atoms-kind" class="flex-1"><option value="">全部</option><option value="goal">目标</option><option value="fact">事实</option><option value="decision">决策</option><option value="constraint">约束</option><option value="error_pattern">错误模式</option><option value="preference">偏好</option></select>
+        <input id="atoms-uid" placeholder="用户ID" class="flex-1" value="jimwong">
+        <button onclick="loadAtoms()" class="btn btn-primary text-xs">加载</button>
+      </div>
+      <div id="atoms-list" class="space-y-2 scroll-area" style="max-height:250px"><div style="color:var(--text2)">未加载</div></div>
+    </div>
+  </div>
+
+  <!-- Memory Export/Import + Project Search -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="card">
+      <div class="label">记忆导出/导入</div>
+      <div class="space-y-2">
+        <div class="flex gap-2"><input id="export-uid" placeholder="用户ID" class="flex-1" value="jimwong"><button onclick="exportMemory()" class="btn btn-green">导出</button></div>
+        <div class="flex gap-2"><input id="import-uid" placeholder="用户ID" class="flex-1" value="jimwong"></div>
+        <textarea id="import-data" placeholder="粘贴 JSON 数据..." class="w-full" style="height:80px"></textarea>
+        <button onclick="importMemory()" class="btn btn-yellow w-full">导入记忆</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">项目搜索</div>
+      <div class="grid grid-cols-2 gap-2">
+        <div><input id="project-kg-id" placeholder="项目ID" class="w-full"><button onclick="searchProjectKG()" class="btn btn-primary w-full mt-1 text-xs">KG搜索</button></div>
+        <div><input id="project-sm-id" placeholder="项目ID" class="w-full"><button onclick="searchProjectSummaries()" class="btn btn-primary w-full mt-1 text-xs">摘要搜索</button></div>
+      </div>
+      <div id="project-results" class="mt-2 space-y-2 scroll-area" style="max-height:200px"></div>
+    </div>
   </div>
 </div>
 
-<div id="tab-pyramid" class="tab-content">
-  <div class="grid grid4" id="pyramidStats"></div>
-  <div class="grid grid2">
+<!-- ==================== PLUGIN ==================== -->
+<div id="tab-plugin" class="tab-content">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <div class="card">
-      <div class="card-title">🏔️ 金字塔结构</div>
-      <div id="pyramidStruct"></div>
+      <div class="label">续跑状态</div>
+      <div id="plugin-cont" class="scroll-area" style="max-height:200px"><div style="color:var(--text2)">未加载</div></div>
+      <div class="flex gap-2 mt-2">
+        <input id="plugin-cont-sid" placeholder="源会话ID (留空查最新)" class="flex-1">
+        <button onclick="loadPluginCont()" class="btn btn-primary text-xs">查询</button>
+      </div>
     </div>
     <div class="card">
-      <div class="card-title">👤 用户画像</div>
-      <div id="personaStats"></div>
+      <div class="label">消息状态</div>
+      <div id="plugin-msg" class="scroll-area" style="max-height:200px"><div style="color:var(--text2)">未加载</div></div>
+      <div class="grid grid-cols-2 gap-2 mt-2">
+        <input id="plugin-msg-sid" placeholder="会话ID" class="w-full">
+        <input id="plugin-msg-mid" placeholder="消息ID" class="w-full">
+      </div>
+      <button onclick="loadPluginMsg()" class="btn btn-primary w-full mt-1 text-xs">查询</button>
+    </div>
+    <div class="card">
+      <div class="label">会话映射</div>
+      <div id="plugin-map" class="scroll-area" style="max-height:200px"><div style="color:var(--text2)">未加载</div></div>
+      <div class="flex gap-2 mt-2">
+        <input id="plugin-map-ocid" placeholder="OpenCode 会话ID" class="flex-1">
+        <button onclick="loadPluginMap()" class="btn btn-primary text-xs">查询</button>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- ==================== SYSTEM ==================== -->
 <div id="tab-system" class="tab-content">
-  <div class="grid grid2">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4" id="sys-stats"></div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="card">
-      <div class="card-title">🖥️ Docker 容器</div>
-      <div id="dockerStats"></div>
+      <div class="label">嵌入模型进度</div>
+      <div id="embed-progress" class="text-center"></div>
     </div>
     <div class="card">
-      <div class="card-title">🔌 终端/事件</div>
-      <div id="terminalStats"></div>
+      <div class="label">金字塔结构</div>
+      <div id="pyramid-struct" class="text-center space-y-3"></div>
     </div>
+  </div>
+  <div class="card mt-4">
+    <div class="label">自检</div>
+    <button onclick="selfCheck()" class="btn btn-primary mb-3">运行自检</button>
+    <pre id="self-check-result" class="json">未执行</pre>
   </div>
 </div>
 
-<svg width="0" height="0"><defs><linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#3b82f6"/><stop offset="100%" style="stop-color:#8b5cf6"/></linearGradient></defs></svg>
+</div><!-- end max-w -->
+
+<!-- Toast container -->
+<div id="toast-container"></div>
 
 <script>
-var API='/api/v1/stats',DATA;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmt=n=>{if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n||0};
+const pct=(p,t)=>t?Math.round(p/t*100):0;
+
+// --- API helpers ---
+async function api(path,opts={}){
+  const url=path.startsWith('http')?path:'/api/v1'+path;
+  const r=await fetch(url,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});
+  if(!r.ok){const e=await r.text();throw new Error(`HTTP ${r.status}: ${e.slice(0,200)}`)}
+  const ct=r.headers.get('content-type')||'';
+  return ct.includes('json')?r.json():r.text();
+}
+async function apiPost(path,body){return api(path,{method:'POST',body:JSON.stringify(body||{})})}
+
+function toast(msg,type='info'){
+  const d=document.createElement('div');
+  d.className='toast toast-'+type;d.textContent=msg;
+  $('toast-container').appendChild(d);
+  setTimeout(()=>{d.style.opacity=0;d.remove()},3000);
+}
+
 function showTab(btn){
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  $('tab-'+btn.dataset.tab).classList.add('active');
 }
-function fmt(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n||0}
-function pct(part,total){return total?Math.round(part/total*100):0}
 
+// --- Dashboard ---
 async function loadAll(){
   try{
-    var r=await fetch(API),d=await r.json();DATA=d;
-    document.getElementById('updateTime').textContent=new Date().toLocaleString('zh-CN');
-    renderOverview();renderKG();renderEmbed();renderLLM();renderPyramid();renderSystem();
-  }catch(e){console.error('Load failed:',e)}
+    const d=await api('/admin/dashboard');
+    $('last-updated').textContent='更新于 '+new Date().toLocaleTimeString('zh-CN');
+    const st=d.overall_status||'unknown';
+    $('overall-status').textContent=st;
+    $('overall-status').style.cssText=st==='ok'?'background:rgba(34,197,94,.2);color:var(--green)':st==='warning'?'background:rgba(234,179,8,.2);color:var(--yellow)':'background:rgba(239,68,68,.2);color:var(--red)';
+    const h=d.health||{},c=d.continuation||{},kg=d.kg||{},a=d.alerts||{},kq=d.kg_ops||{},cmv=d.continuation_metrics||{};
+    $('overview-cards').innerHTML=[
+      ['健康状态',h.status||'-',`DB: ${h.db_counts?.sessions||0} 会话 / ${h.db_counts?.messages||0} 消息`],
+      ['续跑状态',c.status||'-',c.source_session_id?`源会话: ${c.source_session_id.slice(0,12)}`:`pending:${cmv.pending||0} 已消费:${cmv.consumed||0} 最新:${cmv.has_latest?'是':'否'}`],
+      ['知识图谱',kg.status||'-',`成功:${kg.kg_success||0} 限流:${kg.kg_fail_429||0}`],
+      ['告警',a.status||'-',`检查项:${a.checks_evaluated||0}`],
+      ['KG 队列',(kq.queue_ready_total||0)+' ready',`pending:${kq.pending_total||0} dead:${kq.deadletter_total||0}`],
+    ].map(([t,v,s])=>`<div class="card"><div class="label">${t}</div><div class="stat-val">${esc(v)}</div><div class="stat-sub">${esc(s)}</div></div>`).join('');
+
+    const kqItems=[['Ready',kq.queue_ready_total],['Retry',kq.queue_retry_wait_total],['Cooldown',kq.queue_cooldown_running_total],['Running',kq.running_total],['Succeeded',kq.succeeded_total],['Dead',kq.deadletter_total]];
+    $('kg-queue').innerHTML=kqItems.map(([k,v])=>`<div class="text-center"><div class="text-[10px]" style="color:var(--text2)">${k}</div><div class="font-bold text-lg">${v||0}</div></div>`).join('');
+    $('kg-pending-reasons').textContent='阻塞原因: '+((kq.pending_reasons||[]).map(x=>x.reason+':'+x.count).join(', ')||'无');
+
+    const cm=d.continuation_metrics||{},co=d.continuation_ops||{};
+    $('cont-detail').innerHTML=[
+      `已运行: ${cm.pending||0} | 已消费: ${cm.consumed||0}`,
+      `最近间隔: ${cm.latest_age_seconds||0}s | 失败码: ${cm.failure_code||'无'}`,
+      `上次目标: ${co.last_consumed_target_session_id||'无'}`,
+      `自动续跑: ${co.auto_continued_count||0} | 有最新: ${cm.has_latest}`
+    ].map(x=>`<div>${esc(x)}</div>`).join('');
+
+    $('alerts-list').innerHTML=(a.issues||[]).map(i=>`<div class="px-2 py-1 rounded border mb-1" style="border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.1);color:var(--red);font-size:11px"><b>${esc(i.level||'')}</b> ${esc(i.check||'')}: ${(i.issues||[]).map(esc).join('; ')}</div>`).join('')||'<div style="color:var(--text2);font-size:11px">无异常</div>';
+
+    const ai=d.ai_ops_advice||{};
+    $('ai-ops').innerHTML=`<div style="font-weight:700;margin-bottom:4px">AI 运维建议 (${ai.risk_level||'-'})</div><div style="color:var(--text2);margin-bottom:8px">${esc(ai.summary||'')}</div>`+(ai.recommended_actions||[]).map(x=>`<div class="px-2 py-1 rounded mb-1" style="background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.2);font-size:11px"><b>${x.priority} · ${esc(x.area)}</b><br>${esc(x.action)}</div>`).join('');
+
+    const rt=d.opencode_runtime||{};
+    $('runtime').innerHTML=`<div class="flex gap-2 flex-wrap"><span class="px-2 py-1 rounded" style="background:rgba(239,68,68,.1)">悬空: ${rt.sqlite?.dangling_assistant_count||0}</span><span class="px-2 py-1 rounded" style="background:rgba(99,102,241,.1)">重复: ${(rt.repeat_offender_sessions||[]).length}</span></div>`+Object.entries(rt.error_classes||{}).map(([k,v])=>`<span class="inline-block px-2 py-0.5 rounded mr-1" style="background:rgba(0,0,0,.2);font-size:10px">${esc(k)}: ${v}</span>`).join('');
+
+    const rm=d.llm_route_metrics||{};
+    $('routing').innerHTML=Object.entries(rm.window_hit_counts||{}).map(([k,v])=>`<div class="flex justify-between text-[11px] border-b py-0.5" style="border-color:var(--border)"><span>${esc(k)}</span><b>${v}</b></div>`).join('')||'无路由命中数据';
+
+    const cs=d.capacity_snapshot||{};
+    $('capacity').innerHTML=[['总消息',cs.total_messages],['活跃会话',cs.active_sessions],['最久等待',(cs.kg_jobs_oldest_pending_age_seconds||0)/3600?((cs.kg_jobs_oldest_pending_age_seconds||0)/3600).toFixed(1)+'h':'-']].map(([k,v])=>`<div class="px-2 py-1 rounded" style="background:rgba(0,0,0,.2)"><div style="font-size:10px;color:var(--text2)">${k}</div><div class="font-bold">${esc(v)}</div></div>`).join('');
+
+    $('history-list').innerHTML=(d.operation_history||[]).slice(0,10).map(x=>`<div class="border rounded p-2" style="border-color:var(--border)"><div class="flex justify-between"><b>${esc(x.action||'')}</b><span style="font-size:10px;color:var(--text2)">${x.created_at||''}</span></div><div style="font-size:11px;color:var(--text2);margin-top:4px">${esc((x.message||'').slice(0,200))}</div></div>`).join('')||'<div style="color:var(--text2);font-size:11px">无历史记录</div>';
+
+    loadConfig();loadKGEntities();
+  }catch(e){$('last-updated').textContent='加载失败: '+e.message;toast('加载失败: '+e.message,'error')}
 }
 
-function renderOverview(){
+async function loadConfig(){
+  try{const d=await api('/admin/config/model');const v=d.value||d;
+    $('mc-chat').value=v.openai_model||'';$('mc-summary').value=v.summary_model||'';
+    $('mc-backup-chat').value=v.backup_openai_model||'';$('mc-backup-summary').value=v.backup_summary_model||'';
+    $('mc-tertiary-chat').value=v.tertiary_openai_model||'';$('mc-tertiary-summary').value=v.tertiary_summary_model||'';
+    $('mc-quat-chat').value=v.quaternary_openai_model||'';$('mc-quat-summary').value=v.quaternary_summary_model||'';
+    $('mc-routing').value=v.llm_routing_mode||'fallback';
+    $('mc-status').textContent='已加载';
+  }catch(e){$('mc-status').textContent='加载失败'}
+}
+async function saveConfig(){
+  const p={openai_model:$('mc-chat').value.trim(),summary_model:$('mc-summary').value.trim(),backup_openai_model:$('mc-backup-chat').value.trim(),backup_summary_model:$('mc-backup-summary').value.trim(),tertiary_openai_model:$('mc-tertiary-chat').value.trim(),tertiary_summary_model:$('mc-tertiary-summary').value.trim(),quaternary_openai_model:$('mc-quat-chat').value.trim(),quaternary_summary_model:$('mc-quat-summary').value.trim(),llm_routing_mode:$('mc-routing').value.trim()};
+  try{await apiPost('/admin/config/model',p);toast('配置已保存','success')}
+  catch(e){toast('保存失败: '+e.message,'error')}
+}
+
+async function op(action){
+  $('op-result').textContent='执行中...';
+  const map={
+    'run-kg-worker-once':['/admin/ops/run-kg-worker-once',{batch:5,mode:'apply'},'运行 KG Worker'],
+    'requeue-kg-deadletters':['/admin/ops/requeue-kg-deadletters',{},'重排队死信'],
+    'repair-stuck-session':['/admin/ops/repair-stuck-session',{session_id:'',apply:false},'修复卡死会话'],
+    'reconcile-continuation-metrics':['/admin/ops/reconcile-continuation-metrics',{},'校准续跑指标'],
+    'continuation-event':['/admin/metrics/continuation-event',{},'续跑事件'],
+  };
+  const m=map[action];if(!m)return;
   try{
-    document.getElementById('overviewStats').innerHTML=`
-      <div class="card"><div class="card-title">💬 消息总数</div><div class="stat-value">${fmt(DATA.messages)}</div></div>
-      <div class="card"><div class="card-title">👥 活跃会话</div><div class="stat-value">${fmt(DATA.sessions)}</div></div>
-      <div class="card"><div class="card-title">🔗 知识实体</div><div class="stat-value">${fmt(DATA.entities)}</div></div>
-      <div class="card"><div class="card-title">🧠 嵌入完成</div><div class="stat-value">${DATA.m3_pct}%</div></div>`;
-    var kgDone=DATA.kg_done||0,kgPending=DATA.kg_pending||0,kgTotal=kgDone+kgPending;
-    document.getElementById('kgProgress').innerHTML=`
-      <div class="stat-value" style="color:var(--green)">${fmt(kgDone)}</div>
-      <div class="bar-bg"><div class="bar-fg" style="width:${pct(kgDone,kgTotal)}%;background:var(--green)"></div></div>
-      <div class="stat-sub">待处理: <b>${fmt(kgPending)}</b> (${pct(kgPending,kgTotal)}%)</div>`;
-    document.getElementById('embedProgress').innerHTML=`
-      <div style="display:flex;justify-content:space-around;text-align:center">
-        <div><div class="stat-value" style="font-size:24px;color:var(--blue)">${DATA.bge_pct}%</div><div class="stat-label">bge-base 768d</div></div>
-        <div><div class="stat-value" style="font-size:24px;color:var(--purple)">${DATA.m3_pct}%</div><div class="stat-label">bge-m3 1024d</div></div>
-      </div>`;
-  }catch(e){console.error('Overview:',e)}
+    const d=await apiPost(m[0],m[1]);
+    $('op-result').textContent=JSON.stringify(d,null,2);
+    toast(m[2]+' 完成','success');setTimeout(loadAll,1000);
+  }catch(e){$('op-result').textContent='失败: '+e.message;toast(m[2]+' 失败','error')}
 }
 
-function renderKG(){
+async function refreshStats(){
+  try{await api('/stats/refresh');toast('统计已刷新','success');loadAll()}
+  catch(e){toast('刷新失败: '+e.message,'error')}
+}
+
+async function loadRawEvents(){
+  try{const d=await api('/admin/raw-events/stats');$('raw-events').textContent=JSON.stringify(d,null,2)}
+  catch(e){$('raw-events').textContent='加载失败: '+e.message}
+}
+
+// --- Sessions ---
+let allSessions=[],activeSession=null;
+async function loadSessions(){
   try{
-    document.getElementById('kgStats').innerHTML=`
-      <div class="card"><div class="stat-value" style="color:var(--green)">${fmt(DATA.kg_done)}</div><div class="stat-label">已完成</div></div>
-      <div class="card"><div class="stat-value" style="color:var(--yellow)">${fmt(DATA.kg_pending)}</div><div class="stat-label">待处理</div></div>
-      <div class="card"><div class="stat-value" style="color:var(--blue)">${fmt(DATA.entities)}</div><div class="stat-label">实体</div></div>
-      <div class="card"><div class="stat-value" style="color:var(--purple)">${fmt(DATA.relations)}</div><div class="stat-label">关系</div></div>`;
-    document.getElementById('kgBreakdown').innerHTML=`
-      <div class="model-row"><div class="model-name">实体总数</div><div class="model-stats" style="font-weight:600">${fmt(DATA.entities)}</div></div>
-      <div class="model-row"><div class="model-name">关系总数</div><div class="model-stats" style="font-weight:600">${fmt(DATA.relations)}</div></div>
-      <div class="model-row"><div class="model-name">关系密度</div><div class="model-stats">${(DATA.relations/DATA.entities).toFixed(2)}/实体</div></div>`;
-    document.getElementById('kgActivity').innerHTML=`<div class="stat-sub">15+ worker 并行处理，edgefn KAT-Coder (5路) + DeepSeek-V3.2-EXP + V4-Flash + 硅基 Qwen2.5 (2路) + LXC1001 Qwen GPU</div>`;
-  }catch(e){console.error('KG:',e)}
+    allSessions=await api('/sessions/recent?limit=20');
+    renderSessionList(allSessions);
+    $('session-count').textContent=allSessions.length+' 个会话';
+  }catch(e){$('session-list').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
 }
-
-function renderEmbed(){
-  document.getElementById('bgeStats').innerHTML=renderEmbedCard('bge-base-zh-v1.5','768d CPU',DATA.bge,DATA.messages,DATA.bge_pct);
-  document.getElementById('m3Stats').innerHTML=renderEmbedCard('BAAI/bge-m3','1024d API',DATA.m3,DATA.messages,DATA.m3_pct);
+function renderSessionList(ss){
+  $('session-list').innerHTML=ss.length?ss.map(s=>{
+    const t=esc(s.title||s.id.slice(0,12)),d=(s.updated_at||s.created_at||'').slice(0,16).replace('T',' ');
+    const a=activeSession===s.id?'active':'';
+    return `<div class="session-item ${a}" onclick="selectSession('${s.id}')"><div class="flex justify-between"><span style="font-weight:600">${t}</span><span style="font-size:10px;color:var(--text2)">${d}</span></div><div style="font-size:10px;color:var(--text2);margin-top:2px">消息:${s.message_count||0} · Token:${s.total_tokens||0}</div></div>`;
+  }).join(''):'<div style="color:var(--text2)">无会话</div>';
 }
-function renderEmbedCard(name,desc,done,total,pct){
-  return `<div style="text-align:center">
-    <svg class="progress-ring" viewBox="0 0 70 70"><circle class="bg" cx="35" cy="35" r="28"/><circle class="fg" cx="35" cy="35" r="28" stroke-dasharray="175.9" stroke-dashoffset="${175.9*(1-pct/100)}"/><text class="progress-text" x="35" y="39">${pct}%</text></svg>
-    <div style="font-size:14px;font-weight:600;margin-top:8px">${name}</div>
-    <div class="stat-label">${desc} · ${fmt(done)} / ${fmt(total)}</div>
+function filterSessions(){
+  const q=$('session-search').value.toLowerCase();
+  renderSessionList(allSessions.filter(s=>(s.title||'').toLowerCase().includes(q)||s.id.toLowerCase().includes(q)));
+}
+async function createSession(){
+  const t=$('new-session-title').value.trim()||undefined;
+  try{const d=await apiPost('/sessions',{title:t});$('new-session-title').value='';await loadSessions();selectSession(d.id);toast('会话已创建','success')}
+  catch(e){toast('创建失败: '+e.message,'error')}
+}
+async function selectSession(id){
+  activeSession=id;renderSessionList(allSessions);
+  const detail=$('session-detail');detail.innerHTML='<div style="color:var(--text2)">加载中...</div>';
+  try{
+    const s=await api('/sessions/'+id);
+    const msgs=await api('/sessions/'+id+'/messages?limit=200');
+    const ar=s.archived;
+    let buttons=`<button onclick="toggleArchive('${id}',${!ar})" class="btn ${ar?'btn-yellow':'btn-ghost'} text-xs">${ar?'取消归档':'归档'}</button>
+      <button onclick="exportSession('${id}')" class="btn btn-ghost text-xs">导出</button>
+      <button onclick="deleteSession('${id}')" class="btn btn-red text-xs">删除</button>
+      <button onclick="showChat('${id}')" class="btn btn-primary text-xs">聊天</button>
+      <button onclick="summarizeSession('${id}')" class="btn btn-purple text-xs">摘要</button>
+      <button onclick="forceExtract('${id}')" class="btn btn-green text-xs">金字塔提取</button>`;
+    let ctxStats='';
+    try{const cs=await api('/sessions/'+id+'/context-stats');ctxStats=`<div style="font-size:10px;color:var(--text2);margin-top:4px">上下文: ${cs.total_tokens||0} tokens · ${cs.message_count||0} 消息</div>`}catch(e){}
+    let sumStatus='';
+    try{const ss=await api('/sessions/'+id+'/summary-status');if(ss.status)sumStatus=`<span class="px-2 py-0.5 rounded" style="background:rgba(34,197,94,.1);font-size:10px">摘要: ${ss.status}</span>`}catch(e){}
+    detail.innerHTML=`<div class="space-y-3">
+      <div class="flex gap-2 items-center flex-wrap">
+        <span class="px-2 py-1 rounded" style="background:rgba(59,130,246,.15);border:1px solid var(--blue);font-size:12px;font-weight:600">${esc(s.title||s.id.slice(0,12))}</span>
+        <span style="font-size:11px;color:var(--text2)">创建: ${(s.created_at||'').slice(0,16).replace('T',' ')}</span>
+        ${ar?'<span class="px-2 py-0.5 rounded" style="background:rgba(234,179,8,.15);font-size:10px">已归档</span>':''}
+        ${sumStatus}
+      </div>
+      <div class="flex gap-2 flex-wrap">${buttons}</div>
+      ${ctxStats}
+      <div class="scroll-space" style="max-height:400px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:10px">
+        ${msgs.length?msgs.map(m=>`<div class="border-b pb-2 mb-2" style="border-color:var(--border)"><div class="flex justify-between" style="font-size:10px;color:var(--text2)"><b>${m.role}</b><span>${(m.created_at||'').slice(0,16).replace('T',' ')}</span></div><div class="mt-1" style="white-space:pre-wrap">${esc((m.content||'').slice(0,500))}</div></div>`).join(''):'<div style="color:var(--text2)">无消息</div>'}
+      </div>
+    </div>`;
+  }catch(e){detail.innerHTML='<div style="color:var(--red)">加载失败: '+e.message+'</div>'}
+}
+async function toggleArchive(id,archive){
+  try{await apiPost('/sessions/'+id+(archive?'/archive':'/unarchive'));await loadSessions();selectSession(id);toast(archive?'已归档':'已取消归档','success')}
+  catch(e){toast('操作失败: '+e.message,'error')}
+}
+async function deleteSession(id){
+  if(!confirm('确认删除此会话？'))return;
+  try{await api('/sessions/'+id,{method:'DELETE'});activeSession=null;await loadSessions();$('session-detail').innerHTML='<div style="color:var(--text2);text-align:center;padding:40px 0">← 选择一个会话查看详情</div>';toast('已删除','success')}
+  catch(e){toast('删除失败: '+e.message,'error')}
+}
+async function exportSession(id){
+  try{const r=await fetch('/api/v1/sessions/'+id+'/export?format=markdown');const d=await r.json();const blob=new Blob([d.content||JSON.stringify(d,null,2)],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='session-'+id.slice(0,8)+'.md';a.click();toast('已导出','success')}
+  catch(e){toast('导出失败: '+e.message,'error')}
+}
+async function summarizeSession(id){
+  toast('正在生成摘要...','info');
+  try{const d=await apiPost('/sessions/'+id+'/summarize');toast('摘要完成','success');selectSession(id)}
+  catch(e){toast('摘要失败: '+e.message,'error')}
+}
+async function forceExtract(id){
+  toast('正在提取...','info');
+  try{const d=await apiPost('/sessions/'+id+'/pyramid/force-extract');toast('金字塔提取完成','success')}
+  catch(e){toast('提取失败: '+e.message,'error')}
+}
+function showChat(id){
+  const old=$('chat-overlay');if(old)old.remove();
+  const div=document.createElement('div');div.id='chat-overlay';
+  div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:center;justify-content:center';
+  div.innerHTML=`<div class="card" style="width:600px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="flex justify-between mb-3"><b>会话聊天</b><button onclick="document.getElementById('chat-overlay').remove()" style="color:var(--text2);background:none;border:none;font-size:18px;cursor:pointer">✕</button></div>
+    <div id="chat-msgs" style="flex:1;overflow:auto;max-height:400px;padding:8px;border-radius:8px;background:rgba(0,0,0,.2);margin-bottom:12px"></div>
+    <div class="flex gap-2"><input id="chat-input" placeholder="输入消息... (Enter 发送)" class="flex-1" onkeydown="if(event.key==='Enter')sendChat('${id}')"><button onclick="sendChat('${id}')" class="btn btn-primary">发送</button></div>
   </div>`;
+  div.onclick=e=>{if(e.target===div)div.remove()};
+  document.body.appendChild(div);loadChatMsgs(id);
+}
+async function loadChatMsgs(id){
+  try{const msgs=await api('/sessions/'+id+'/messages?limit=100');
+    $('chat-msgs').innerHTML=msgs.map(m=>`<div style="${m.role==='user'?'text-align:right':''}"><div style="display:inline-block;padding:6px 12px;border-radius:8px;font-size:12px;max-width:80%;${m.role==='user'?'background:rgba(59,130,246,.2)':'background:rgba(255,255,255,.05);border:1px solid var(--border)'}">${esc((m.content||'').slice(0,300))}</div></div>`).join('');
+    $('chat-msgs').scrollTop=$('chat-msgs').scrollHeight;
+  }catch(e){$('chat-msgs').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function sendChat(id){
+  const inp=$('chat-input');const t=inp.value.trim();if(!t)return;inp.value='';
+  try{await apiPost('/sessions/'+id+'/chat',{message:t});loadChatMsgs(id)}
+  catch(e){toast('发送失败: '+e.message,'error')}
 }
 
-function renderLLM(){
-  var models=[
-    {n:'DeepSeek-V3.2-EXP',h:131,f:6150,c:'var(--blue)'},
-    {n:'DeepSeek-V4-Flash',h:2546,f:1359,c:'var(--purple)'},
-    {n:'KAT-Coder',h:16412,f:21727,c:'var(--cyan)'},
-    {n:'DeepSeek-R1',h:19040,f:5575,c:'var(--green)'},
-    {n:'bge-base/m3',h:459673,f:0,c:'var(--yellow)'},
-  ];
-  var rows=models.map(function(m){var t=m.h+m.f;var p=m.h/t*100||0;return`
-    <div class="model-row">
-      <div class="model-name"><span class="dot" style="background:${m.c}"></span>${m.n}</div>
-      <div class="model-bar"><div class="model-hits" style="width:${p}%"></div><div class="model-fails" style="width:${100-p}%"></div></div>
-      <div class="model-stats">✓${fmt(m.h)} ✗${fmt(m.f)}<br><b>${p.toFixed(0)}%</b></div>
-    </div>`;}).join('');
-  document.getElementById('llmStats').innerHTML=rows;
+// --- KG ---
+async function loadKGEntities(){
+  const f=$('kg-entity-filter')?.value||'';
+  try{const d=await api('/kg/entities?limit=50');const filtered=f?d.filter(e=>e.entity_type===f):d;
+    const colors={file:'#3b82f6',function:'#22c55e',error:'#ef4444',concept:'#a855f7',person:'#eab308',project:'#6366f1'};
+    $('kg-entity-list').innerHTML=filtered.slice(0,30).map(e=>`<div class="session-item"><div class="flex justify-between items-center"><span class="truncate">${esc(e.name)}</span><span class="entity-badge" style="background:${colors[e.entity_type]||'rgba(0,0,0,.3)'};color:#fff">${esc(e.entity_type||'')}</span></div></div>`).join('')||'<div style="color:var(--text2)">无实体</div>';
+  }catch(e){$('kg-entity-list').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadKGRelations(){
+  const lim=parseInt($('kg-rel-limit').value)||50;
+  try{const d=await api('/kg/relations?limit='+lim);
+    $('kg-rel-list').innerHTML=d.slice(0,lim).map(r=>`<div class="session-item"><div style="font-size:11px"><b>${esc(r.source_entity||r.source_entity_id?.slice(0,8)||'')}</b> → <b>${esc(r.relation_type||'')}</b> → <b>${esc(r.target_entity||r.target_entity_id?.slice(0,8)||'')}</b></div></div>`).join('')||'<div style="color:var(--text2)">无关系</div>';
+  }catch(e){$('kg-rel-list').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadKGGraph(){
+  const lim=parseInt($('kg-graph-limit').value)||20;
+  $('kg-graph-info').textContent='加载中...';
+  try{const d=await api('/kg/graph?limit='+lim);let nodes=d.nodes||[],edges=d.edges||[];
+    const svg=$('kg-graph-svg');const W=svg.clientWidth||800,H=400;
+    const tc={file:'#3b82f6',function:'#22c55e',error:'#ef4444',concept:'#a855f7',person:'#eab308',project:'#6366f1'};
+    const ns=new Set(nodes.map(n=>n.id));
+    edges.forEach(e=>{if(!ns.has(e.source)){nodes.push({id:e.source,label:e.source.slice(0,8),type:''});ns.add(e.source)}if(!ns.has(e.target)){nodes.push({id:e.target,label:e.target.slice(0,8),type:''});ns.add(e.target)}});
+    const pos={};nodes.forEach(n=>{pos[n.id]={x:Math.random()*(W-100)+50,y:Math.random()*(H-60)+30,vx:0,vy:0}});
+    for(let i=0;i<80;i++){for(const n of nodes){const p=pos[n.id];for(const m of nodes){if(n.id===m.id)continue;const q=pos[m.id];let dx=p.x-q.x,dy=p.y-q.y,di=Math.sqrt(dx*dx+dy*dy)||1;p.vx+=dx/di*800/(di*di);p.vy+=dy/di*800/(di*di)}p.vx+=(W/2-p.x)*.001;p.vy+=(H/2-p.y)*.001}
+      for(const e of edges){const s=pos[e.source],t=pos[e.target];if(!s||!t)continue;let dx=t.x-s.x,dy=t.y-s.y,di=Math.sqrt(dx*dx+dy*dy)||1;s.vx+=dx/di*di*.005;s.vy+=dy/di*di*.005;t.vx-=dx/di*di*.005;t.vy-=dy/di*di*.005}
+      for(const n of nodes){const p=pos[n.id];p.x=Math.max(30,Math.min(W-30,p.x+p.vx));p.y=Math.max(20,Math.min(H-20,p.y+p.vy));p.vx*=.7;p.vy*=.7}}
+    let h='';for(const e of edges){const s=pos[e.source],t=pos[e.target];if(!s||!t)continue;h+=`<line x1="${s.x.toFixed(1)}" y1="${s.y.toFixed(1)}" x2="${t.x.toFixed(1)}" y2="${t.y.toFixed(1)}" stroke="#475569" stroke-width="1"/>`}
+    for(const n of nodes){const p=pos[n.id];h+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7" fill="${tc[n.type]||'#64748b'}" stroke="#fff" stroke-width="1.5"/><text x="${p.x.toFixed(1)}" y="${(p.y-12).toFixed(1)}" text-anchor="middle" font-size="9" fill="#f1f5f9">${esc((n.label||n.type||'').slice(0,12))}</text>`}
+    svg.innerHTML=h;$('kg-graph-info').textContent='节点'+nodes.length+' / 边'+edges.length;
+  }catch(e){$('kg-graph-info').textContent='失败: '+e.message}
+}
+async function searchKG(){
+  const q=$('kg-search-q').value.trim(),t=$('kg-search-type').value;if(!q)return;
+  $('kg-search-results').innerHTML='<div style="color:var(--text2)">搜索中...</div>';
+  try{const body={query:q};if(t)body.entity_type=t;const d=await apiPost('/kg/search',body);
+    $('kg-search-results').innerHTML=d.length?d.map(e=>`<div class="session-item"><div class="flex justify-between"><span><b>${esc(e.name)}</b></span><a href="/api/v1/kg/entity/${encodeURIComponent(e.name)}/sessions" target="_blank" style="font-size:10px;color:var(--blue)">查看会话 →</a></div><span class="entity-badge" style="background:rgba(0,0,0,.3)">${esc(e.entity_type||'')}</span></div>`).join(''):'<div style="color:var(--text2)">无结果</div>';
+  }catch(e){$('kg-search-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadKGByVisibility(){
+  const t=$('kg-vis-type').value, vis=$('kg-visibility').value;
+  try{const d=await api('/kg/'+t+'/by-visibility?visibility='+vis+'&limit=50');
+    let items;
+    if(Array.isArray(d)) items=d;
+    else if(d.results) items=d.results;
+    else if(t==='graph'&&d.nodes) items=[`节点:${d.nodes.length} / 边:${(d.edges||[]).length}`];
+    else items=[];
+    $('kg-vis-results').innerHTML=items.length?items.slice(0,30).map(x=>{
+      const name=(x.name||x.source_entity||x.relation_type||x.id||'').toString();
+      const sub=(x.entity_type||x.target_entity||'');
+      return `<div class="session-item"><b>${esc(name)}</b> ${sub?`<span class="entity-badge" style="background:rgba(0,0,0,.3)">${esc(sub)}</span>`:''}</div>`;
+    }).join(''):'<div style="color:var(--text2)">无数据</div>';
+  }catch(e){$('kg-vis-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadEntitySessions(){
+  const n=$('entity-name-sessions').value.trim();if(!n)return;
+  try{const d=await api('/kg/entity/'+encodeURIComponent(n)+'/sessions');
+    $('entity-sessions-results').innerHTML=d.length?d.map(s=>`<div class="session-item">${esc(s.title||s.id?.slice(0,12))}</div>`).join(''):'<div style="color:var(--text2)">无关联会话</div>';
+  }catch(e){$('entity-sessions-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadRelationSessions(){
+  const t=$('rel-type-sessions').value.trim();if(!t)return;
+  try{const d=await api('/kg/relation/'+encodeURIComponent(t)+'/sessions');
+    $('rel-sessions-results').innerHTML=d.length?d.map(s=>`<div class="session-item">${esc(s.title||s.id?.slice(0,12))}</div>`).join(''):'<div style="color:var(--text2)">无关联会话</div>';
+  }catch(e){$('rel-sessions-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
 }
 
-function renderPyramid(){
-  document.getElementById('pyramidStats').innerHTML=`
-    <div class="card"><div class="stat-value" style="color:var(--green)">${fmt(DATA.atoms)}</div><div class="stat-label">L1 原子</div></div>
-    <div class="card"><div class="stat-value" style="color:var(--blue)">${fmt(DATA.scenarios)}</div><div class="stat-label">L2 场景</div></div>
-    <div class="card"><div class="stat-value" style="color:var(--purple)">—</div><div class="stat-label">L3 画像</div></div>
-    <div class="card"><div class="stat-value" style="color:var(--cyan)">${fmt(DATA.sessions)}</div><div class="stat-label">会话源</div></div>`;
-  document.getElementById('pyramidStruct').innerHTML=`
-    <div style="padding:12px 0;text-align:center"><div style="font-size:28px">🏔️</div><div style="font-size:12px;font-weight:600">L3: 用户画像 (R1推理)</div></div>
-    <div style="padding:12px 0;text-align:center"><div style="font-size:24px">🏔️🏔️</div><div style="font-size:12px;font-weight:600">L2: 场景聚合 (${fmt(DATA.scenarios)})</div></div>
-    <div style="padding:12px 0;text-align:center"><div style="font-size:20px">🏔️🏔️🏔️</div><div style="font-size:12px;font-weight:600">L1: 原子记忆 (${fmt(DATA.atoms)})</div></div>`;
-  document.getElementById('personaStats').innerHTML=`<div class="stat-sub">金字塔使用 persona R1 深度推理模型构建用户画像，通过层级汇聚原子记忆形成。</div>`;
+// --- Search/Query ---
+async function doSearch(){
+  const sid=$('search-session-id').value.trim(),q=$('search-q').value.trim();if(!q)return;
+  $('search-results').innerHTML='<div style="color:var(--text2)">搜索中...</div>';
+  try{
+    let d;
+    if(sid){d=await apiPost('/sessions/'+sid+'/search',{query:q})}
+    else{const sess=await api('/sessions/recent?limit=20');const ql=q.toLowerCase();d=sess.filter(s=>(s.title||'').toLowerCase().includes(ql)||(s.id||'').toLowerCase().includes(ql))}
+    $('search-results').innerHTML=Array.isArray(d)&&d.length?d.map(s=>`<div class="session-item"><b>${esc(s.title||s.id?.slice(0,12))}</b> <span style="font-size:10px;color:var(--text2)">${s.updated_at||''}</span></div>`).join(''):'<div style="color:var(--text2)">无匹配</div>';
+  }catch(e){$('search-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function doQuery(){
+  const q=$('query-q').value.trim();if(!q)return;
+  $('query-result').textContent='查询中...';
+  try{const d=await apiPost('/query',{query:q,temperature:$('query-temp').value||undefined});$('query-result').textContent=JSON.stringify(d,null,2)}
+  catch(e){$('query-result').textContent='失败: '+e.message}
+}
+async function doWeightedSearch(){
+  const q=$('weighted-q').value.trim();if(!q)return;
+  $('weighted-results').innerHTML='<div style="color:var(--text2)">搜索中...</div>';
+  try{const d=await api('/search/weighted?query='+encodeURIComponent(q)+'&limit=10');
+    const arr=Array.isArray(d)?d:(d.results||d.messages||[]);
+    $('weighted-results').innerHTML=arr.length?arr.map(m=>`<div class="session-item"><div style="font-size:10px;color:var(--text2)"><b>${m.role||''}</b> ${m.session_id?.slice(0,8)||''}</div><div style="margin-top:2px">${esc((m.content||'').slice(0,200))}</div></div>`).join(''):'<div style="color:var(--text2)">无结果</div>';
+  }catch(e){$('weighted-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function doHybrid(){
+  const u=$('hybrid-user').value.trim()||'jimwong',q=$('hybrid-q').value.trim();if(!q)return;
+  $('hybrid-results').innerHTML='<div style="color:var(--text2)">搜索中...</div>';
+  try{const d=await apiPost('/users/'+encodeURIComponent(u)+'/hybrid-search',{query:q,strategy:$('hybrid-strategy').value});
+    const msgs=d.messages||d.results||[];
+    $('hybrid-results').innerHTML=msgs.length?msgs.map(m=>`<div class="session-item"><div style="font-size:10px;color:var(--text2)"><b>${m.role||''}</b> ${m.session_id?.slice(0,8)||''}</div><div style="margin-top:2px">${esc((m.content||'').slice(0,300))}</div></div>`).join(''):'<div style="color:var(--text2)">无结果</div>';
+  }catch(e){$('hybrid-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
 }
 
-function renderSystem(){
-  document.getElementById('dockerStats').innerHTML=`
-    <div class="model-row"><div class="model-name">session_memory_api</div><span class="dot dot-green"></span><span style="font-size:11px">uvicorn :8000</span></div>
-    <div class="model-row"><div class="model-name">session_memory_postgres</div><span class="dot dot-green"></span><span style="font-size:11px">PG16 pgvector :5432</span></div>
-    <div class="model-row"><div class="model-name">session_memory_redis</div><span class="dot dot-green"></span><span style="font-size:11px">Redis 7 :6379</span></div>
-    <div class="model-row"><div class="model-name">session_memory_pyramid</div><span class="dot dot-green"></span><span style="font-size:11px">金字塔 worker</span></div>`;
-  document.getElementById('terminalStats').innerHTML=`
-    <div class="model-row"><div class="model-name">Docker 容器</div><div class="model-stats"><b>4</b> running</div></div>
-    <div class="model-row"><div class="model-name">数据表</div><div class="model-stats"><b>10+</b> tables</div></div>
-    <div class="model-row"><div class="model-name">KG Worker</div><div class="model-stats"><b>15+</b> parallel</div></div>
-    <div class="model-row"><div class="model-name">LLM Keys</div><div class="model-stats"><b>7</b> providers</div></div>`;
+// --- Recall ---
+async function doBridge(){
+  const body={seed_message_ids:[$('bridge-seed1').value.trim()].filter(Boolean),max_hops:parseInt($('bridge-hops').value)||2};
+  if(!body.seed_message_ids.length){toast('请填写种子消息ID','info');return}
+  try{const d=await apiPost('/recall/bridge',body);$('recall-result').textContent=JSON.stringify(d,null,2)}
+  catch(e){$('recall-result').textContent='失败: '+e.message}
+}
+async function doExpand(){
+  const entities=$('expand-entities').value.split(',').map(s=>s.trim()).filter(Boolean),hops=parseInt($('expand-hops').value)||2;
+  try{const d=await apiPost('/recall/expand-entities',{entities,hops});$('recall-result').textContent=JSON.stringify(d,null,2)}
+  catch(e){$('recall-result').textContent='失败: '+e.message}
+}
+async function doDecompose(){
+  const q=$('decompose-q').value.trim();if(!q)return;
+  try{const d=await apiPost('/recall/decompose',{query:q});$('recall-result').textContent=JSON.stringify(d,null,2)}
+  catch(e){$('recall-result').textContent='失败: '+e.message}
 }
 
-loadAll();
-setInterval(function(){if(document.getElementById('autoRefresh').checked)loadAll()},15000);
+// --- Memory ---
+async function loadPersona(){
+  const u=$('persona-uid').value.trim()||'jimwong';
+  $('persona-content').innerHTML='<div style="color:var(--text2)">加载中...</div>';
+  try{const d=await api('/users/'+encodeURIComponent(u)+'/persona');$('persona-version').textContent='版本 '+(d.version||'?');$('persona-content').innerHTML=`<pre style="white-space:pre-wrap;font-size:11px">${esc(JSON.stringify(d,null,2))}</pre>`}
+  catch(e){$('persona-content').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadScenarios(){
+  const u=$('scenarios-uid').value.trim()||'jimwong';
+  $('scenarios-list').innerHTML='<div style="color:var(--text2)">加载中...</div>';
+  try{const d=await api('/users/'+encodeURIComponent(u)+'/scenarios');$('scenarios-list').innerHTML=d.length?d.map(s=>`<div class="session-item"><b>${esc(s.title||'')}</b><div style="color:var(--text2);margin-top:2px">${esc((s.narrative_md||'').slice(0,150))}...</div></div>`).join(''):'<div style="color:var(--text2)">无场景</div>'}
+  catch(e){$('scenarios-list').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadAtoms(){
+  const u=$('atoms-uid').value.trim()||'jimwong',k=$('atoms-kind').value;
+  $('atoms-list').innerHTML='<div style="color:var(--text2)">加载中...</div>';
+  try{let url='/users/'+encodeURIComponent(u)+'/atoms?';if(k)url+='kind='+k+'&';const d=await api(url);$('atoms-list').innerHTML=d.length?d.map(a=>`<div class="session-item"><div class="flex justify-between"><b>${esc(a.title||a.kind)}</b><span style="font-size:10px;color:var(--text2)">${esc(a.kind)}</span></div><div style="color:var(--text2);margin-top:2px">${esc((a.content||'').slice(0,100))}</div></div>`).join(''):'<div style="color:var(--text2)">无原子</div>'}
+  catch(e){$('atoms-list').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function exportMemory(){
+  const u=$('export-uid').value.trim()||'jimwong';
+  try{const d=await api('/users/'+encodeURIComponent(u)+'/memory/export');const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='memory-'+u+'.json';a.click();toast('已导出','success')}
+  catch(e){toast('导出失败: '+e.message,'error')}
+}
+async function importMemory(){
+  const u=$('import-uid').value.trim()||'jimwong',data=$('import-data').value.trim();if(!data){toast('请粘贴数据','info');return}
+  try{await api('/users/'+encodeURIComponent(u)+'/memory/import',{method:'POST',body:data});toast('导入成功','success')}
+  catch(e){toast('导入失败: '+e.message,'error')}
+}
+async function searchProjectKG(){
+  const p=$('project-kg-id').value.trim();if(!p)return;
+  $('project-results').innerHTML='<div style="color:var(--text2)">搜索中...</div>';
+  try{const d=await api('/projects/'+encodeURIComponent(p)+'/search/kg');$('project-results').innerHTML=d.length?d.map(e=>`<div class="session-item"><b>${esc(e.name)}</b> <span style="font-size:10px;color:var(--text2)">${esc(e.entity_type||'')}</span></div>`).join(''):'<div style="color:var(--text2)">无结果</div>'}
+  catch(e){$('project-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function searchProjectSummaries(){
+  const p=$('project-sm-id').value.trim();if(!p)return;
+  $('project-results').innerHTML='<div style="color:var(--text2)">搜索中...</div>';
+  try{const d=await api('/projects/'+encodeURIComponent(p)+'/search/summaries');$('project-results').innerHTML=d.length?d.map(s=>`<div class="session-item"><b>${esc(s.title||'')}</b><div style="color:var(--text2);margin-top:2px">${esc((s.content||'').slice(0,150))}...</div></div>`).join(''):'<div style="color:var(--text2)">无结果</div>'}
+  catch(e){$('project-results').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+
+// --- Plugin State ---
+async function loadPluginCont(){
+  const s=$('plugin-cont-sid').value.trim();
+  try{const d=await api('/plugin-state/continuation'+(s?'/'+s:'')+'/latest');$('plugin-cont').innerHTML=`<pre style="white-space:pre-wrap;font-size:11px">${esc(JSON.stringify(d,null,2))}</pre>`}
+  catch(e){$('plugin-cont').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadPluginMsg(){
+  const s=$('plugin-msg-sid').value.trim(),m=$('plugin-msg-mid').value.trim();if(!s||!m){toast('请填写会话和消息ID','info');return}
+  try{const d=await api('/plugin-state/message-state/'+s+'/'+m);$('plugin-msg').innerHTML=`<pre style="white-space:pre-wrap;font-size:11px">${esc(JSON.stringify(d,null,2))}</pre>`}
+  catch(e){$('plugin-msg').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+async function loadPluginMap(){
+  const o=$('plugin-map-ocid').value.trim();if(!o){toast('请填写OpenCode会话ID','info');return}
+  try{const d=await api('/plugin-state/session-map/'+o);$('plugin-map').innerHTML=`<pre style="white-space:pre-wrap;font-size:11px">${esc(JSON.stringify(d,null,2))}</pre>`}
+  catch(e){$('plugin-map').innerHTML='<div style="color:var(--red)">'+e.message+'</div>'}
+}
+
+// --- System Stats ---
+async function loadSystemStats(){
+  try{const d=await api('/stats');const items=[['消息',d.messages],['会话',d.sessions],['实体',d.entities],['关系',d.relations],['原子',d.atoms],['场景',d.scenarios],['KG完成',d.kg_done],['KG待处理',d.kg_pending]];
+    $('sys-stats').innerHTML=items.map(([k,v])=>`<div class="card text-center"><div class="stat-val">${fmt(v)}</div><div class="stat-sub">${k}</div></div>`).join('');
+    $('embed-progress').innerHTML=`<div style="display:flex;justify-content:space-around;text-align:center"><div><div class="stat-val" style="font-size:20px;color:var(--blue)">${d.bge_pct}%</div><div class="stat-sub">bge 768d (${fmt(d.bge)}/${fmt(d.messages)})</div></div><div><div class="stat-val" style="font-size:20px;color:var(--purple)">${d.m3_pct}%</div><div class="stat-sub">m3 1024d (${fmt(d.m3)}/${fmt(d.messages)})</div></div></div>`;
+    $('pyramid-struct').innerHTML=`<div><div style="font-size:24px">🏔️</div><div style="font-weight:600">L3: 用户画像</div><div id="pyramid-persona" style="font-size:11px;color:var(--text2);max-height:120px;overflow:auto;margin-top:4px">加载中...</div></div><div><div style="font-size:20px">🏔️🏔️</div><div style="font-weight:600">L2: 场景 (${fmt(d.scenarios)})</div></div><div><div style="font-size:16px">🏔️🏔️🏔️</div><div style="font-weight:600">L1: 原子 (${fmt(d.atoms)})</div></div>`;
+    // 自动加载 L3 用户画像
+    try{const p=await api('/users/jimwong/persona');const el=$('pyramid-persona');if(el&&p.profile_md)el.textContent=p.profile_md.slice(0,200)+'...';else if(el)el.textContent='无画像数据';}catch(e){const el=$('pyramid-persona');if(el)el.textContent='加载失败';}
+  }catch(e){}
+}
+async function selfCheck(){
+  $('self-check-result').textContent='自检中...';
+  try{const r=await fetch('/health');const h=await r.json();const r2=await fetch('/api/v1/admin/dashboard');const d=await r2.json();const r3=await fetch('/api/v1/stats');const s=await r3.json();
+    const checks=[['/health',r.status,JSON.stringify(h)],['/admin/dashboard',r2.status,'overall='+d.overall_status],['DB sessions',d?.health?.db_counts?.sessions||'?',''],['DB messages',d?.health?.db_counts?.messages||'?',''],['KG entities',s?.entities||'?',''],['KG relations',s?.relations||'?',''],['KG done',s?.kg_done||'?',''],['KG pending',s?.kg_pending||'?',''],['KG ready',d.kg_ops?.queue_ready_total||0,''],['Continuation',d.continuation?.status||'?','']];
+    $('self-check-result').innerHTML=checks.map(([k,v,e])=>`${esc(k)}: <b>${esc(v)}</b> ${e?esc(e):''}`).join('<br>');
+  }catch(e){$('self-check-result').textContent='自检失败: '+e.message}
+}
+
+// --- Init ---
+loadAll();loadSessions();loadSystemStats();loadPersona();
+setInterval(()=>{if($('auto-refresh').checked)loadAll()},15000);
+setInterval(loadSystemStats,30000);
 </script>
 </body>
 </html>
