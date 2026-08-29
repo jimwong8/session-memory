@@ -7,3 +7,5 @@
 .repair-backups/
 src/services/pyramid/.repair-backups/
 nohup.out
+.env
+data/
