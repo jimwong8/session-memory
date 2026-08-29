@@ -908,7 +908,7 @@ async function loadSystemStats(){
 async function selfCheck(){
   $('self-check-result').textContent='自检中...';
   try{const r=await fetch('/health');const h=await r.json();const r2=await fetch('/api/v1/admin/dashboard');const d=await r2.json();const r3=await fetch('/api/v1/stats');const s=await r3.json();
-    const checks=[['/health',r.status,JSON.stringify(h)],['/admin/dashboard',r2.status,'overall='+d.overall_status],['DB sessions',d?.health?.db_counts?.sessions||'?',''],['DB messages',d?.health?.db_counts?.messages||'?',''],['KG entities',s?.entities||'?',''],['KG relations',s?.relations||'?',''],['KG done',s?.kg_done||'?',''],['KG pending',s?.kg_pending||'?',''],['KG ready',d.kg_ops?.queue_ready_total||0,''],['Continuation',d.continuation?.status||'?','']];
+    const checks=[['/health',r.status,JSON.stringify(h)],['/admin/dashboard',r2.status,'overall='+d.overall_status],['DB sessions',d?.health?.db_counts?.sessions??'?',''],['DB messages',d?.health?.db_counts?.messages??'?',''],['KG entities',s?.entities??'?',''],['KG relations',s?.relations??'?',''],['KG done',s?.kg_done??'?',''],['KG pending',s?.kg_pending??'?',''],['KG ready',d.kg_ops?.queue_ready_total??0,''],['Continuation',d.continuation?.status??'?','']];
     $('self-check-result').innerHTML=checks.map(([k,v,e])=>`${esc(k)}: <b>${esc(v)}</b> ${e?esc(e):''}`).join('<br>');
   }catch(e){$('self-check-result').textContent='自检失败: '+e.message}
 }

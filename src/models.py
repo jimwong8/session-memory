@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, Uuid, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -43,7 +43,7 @@ class Session(Base):
 
     canvas_mermaid: Mapped[str | None] = mapped_column(Text, nullable=True)
     pyramid_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    source_terminal_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_terminal_id: Mapped[str | None] = mapped_column(Uuid, nullable=True)
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="session", cascade="all, delete-orphan", order_by="Message.created_at"
