@@ -38,6 +38,15 @@ pre.json{background:rgba(0,0,0,.4);color:#a5f3a3;border-radius:8px;padding:10px;
 .session-item:hover{background:rgba(255,255,255,.05)}.session-item.active{background:rgba(59,130,246,.15);border-color:var(--blue)}
 .entity-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;margin:2px}
 @media(max-width:768px){.grid-cols-3{grid-template-columns:1fr}.grid-cols-4{grid-template-columns:1fr 1fr}}
+
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:12px}
+.card-title{font-size:15px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.kv{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px}
+.kv span{color:var(--text2)}.kv b{font-weight:600;text-align:right;max-width:60%;word-break:break-all}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.badge-online{background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green)}
+.badge-offline{background:rgba(148,163,184,.15);color:var(--text2);border:1px solid var(--border)}
+.muted{color:var(--text2);font-size:12px}.err{color:var(--red);font-size:12px}
 </style>
 </head>
 <body>
@@ -64,6 +73,7 @@ pre.json{background:rgba(0,0,0,.4);color:#a5f3a3;border-radius:8px;padding:10px;
   <button class="nav-tab" data-tab="memory" onclick="showTab(this)">用户记忆</button>
   <button class="nav-tab" data-tab="plugin" onclick="showTab(this)">插件状态</button>
   <button class="nav-tab" data-tab="system" onclick="showTab(this)">系统统计</button>
+  <button class="nav-tab" data-tab="terminals" onclick="showTab(this);loadTerminals()">终端监控</button>
 </div>
 
 <!-- ==================== DASHBOARD ==================== -->
@@ -439,6 +449,18 @@ pre.json{background:rgba(0,0,0,.4);color:#a5f3a3;border-radius:8px;padding:10px;
 <!-- Toast container -->
 <div id="toast-container"></div>
 
+
+<div id="tab-terminals" class="tab-content">
+  <div class="section">
+    <h2>在线会话终端监控</h2>
+    <p class="muted">实时显示同步会话的终端：名称、IP、操作系统、在线状态、最后活动、会话数</p>
+    <div style="margin-bottom:12px">
+      <button class="btn" onclick="loadTerminals()">刷新</button>
+      <span id="terminals-summary" class="muted"></span>
+    </div>
+    <div id="terminals-list" class="card-grid"></div>
+  </div>
+</div>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -455,6 +477,37 @@ async function api(path,opts={}){
 }
 async function apiPost(path,body){return api(path,{method:'POST',body:JSON.stringify(body||{})})}
 
+async function loadTerminals(){
+  try{
+    const list=await api('/terminals');
+    const wrap=$('terminals-list');
+    wrap.innerHTML='';
+    const online=list.filter(t=>t.is_online).length;
+    $('terminals-summary').textContent=`共 ${list.length} 个终端，在线 ${online} 个`;
+    if(list.length===0){wrap.innerHTML='<p class="muted">暂无终端数据</p>';return;}
+    for(const t of list){
+      const last=new Date(t.last_seen).toLocaleString('zh-CN');
+      const reg=new Date(t.registered_at).toLocaleString('zh-CN');
+      const badge=t.is_online?'<span class="badge badge-online">在线</span>':'<span class="badge badge-offline">离线</span>';
+      const card=document.createElement('div');
+      card.className='card';
+      card.innerHTML=`
+        <div class="card-title">${esc(t.terminal_name)} ${badge}</div>
+        <div class="kv"><span>主机名</span><b>${esc(t.hostname||'-')}</b></div>
+        <div class="kv"><span>IP 地址</span><b>${esc(t.ip_address||'-')}</b></div>
+        <div class="kv"><span>操作系统</span><b>${esc(t.os_info||'-')}</b></div>
+        <div class="kv"><span>来源</span><b>${esc(t.source||'-')}</b></div>
+        <div class="kv"><span>会话数</span><b>${t.session_count||0}</b></div>
+        <div class="kv"><span>消息数</span><b>${t.message_count||0}</b></div>
+        <div class="kv"><span>最后活动</span><b>${last}</b></div>
+        <div class="kv"><span>注册时间</span><b>${reg}</b></div>
+      `;
+      wrap.appendChild(card);
+    }
+  }catch(e){
+    $('terminals-list').innerHTML='<p class="err">加载失败: '+esc(e.message)+'</p>';
+  }
+}
 function toast(msg,type='info'){
   const d=document.createElement('div');
   d.className='toast toast-'+type;d.textContent=msg;

@@ -2136,3 +2136,170 @@ async def ingest_event(data: dict, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="消息内容为空")
 
     return {"status": "ok", "message_ids": results, "count": len(results)}
+# ── Terminal heartbeat & monitoring API ──────────────────────────────
+# 在线会话终端监控：客户端 hook 每 30s 心跳上报，前端展示终端列表
+from datetime import timedelta
+
+class TerminalHeartbeat(BaseModel):
+    terminal_name: str
+    hostname: str = ""
+    os_info: str = ""
+    ip_address: str = ""
+    user_id: str = "jimwong"
+    source: str = "hermes"
+
+class TerminalInfo(BaseModel):
+    id: str
+    terminal_name: str
+    hostname: str = ""
+    os_info: str = ""
+    ip_address: str = ""
+    is_online: bool = False
+    last_seen: str = ""
+    registered_at: str = ""
+    session_count: int = 0
+    message_count: int = 0
+    source: str = ""
+
+@router.post("/terminals/heartbeat", response_model=TerminalInfo)
+async def terminal_heartbeat(data: TerminalHeartbeat, db: AsyncSession = Depends(get_db)):
+    """终端心跳注册/更新：按 terminal_name+user_id upsert，置在线"""
+    async with db.begin():
+        row = await db.execute(
+            sql_text("SELECT id FROM terminals WHERE terminal_name=:n AND user_id=:u"),
+            {"n": data.terminal_name, "u": data.user_id}
+        )
+        existing = row.fetchone()
+        now = datetime.now(timezone.utc)
+        if existing:
+            tid = existing[0]
+            await db.execute(
+                sql_text("""UPDATE terminals SET hostname=CAST(:h AS text), os_info=CAST(:o AS text), ip_address=CAST(:i AS text),
+                            last_seen=:now, is_online=true,
+                            metadata_json = jsonb_set(COALESCE(metadata_json,'{}'::jsonb), '{source}', to_jsonb(CAST(:src AS text)))
+                            WHERE id=:id"""),
+                {"h": data.hostname, "o": data.os_info, "i": data.ip_address,
+                 "now": now, "src": data.source, "id": tid}
+            )
+        else:
+            tid = str(uuid.uuid4())
+            await db.execute(
+                sql_text("""INSERT INTO terminals (id, user_id, terminal_name, hostname, os_info,
+                            ip_address, last_seen, registered_at, is_online, metadata_json)
+                            VALUES (CAST(:id AS uuid), CAST(:u AS text), CAST(:n AS text), CAST(:h AS text),
+                                    CAST(:o AS text), CAST(:i AS text), :now,
+                                    :now, true,
+                                    jsonb_build_object('source', to_jsonb(CAST(:src AS text))))"""),
+                {"id": tid, "u": data.user_id, "n": data.terminal_name, "h": data.hostname,
+                 "o": data.os_info, "i": data.ip_address, "now": now, "src": data.source}
+            )
+        # 标记超时终端离线 (>10min 无心跳)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+        await db.execute(
+            sql_text("UPDATE terminals SET is_online=false WHERE last_seen < :cutoff"),
+            {"cutoff": cutoff}
+        )
+        r2 = await db.execute(
+            sql_text("SELECT id, terminal_name, hostname, os_info, ip_address, is_online, last_seen, registered_at, metadata_json, (SELECT count(*) FROM sessions s WHERE s.source_terminal_id = id) as session_count FROM terminals WHERE id=:tid"),
+            {"tid": tid}
+        )
+        rr = r2.fetchone()
+    if rr is None:
+        raise HTTPException(status_code=404, detail="terminal not found")
+    info = _row_to_terminal(rr)
+    mc = await db.execute(
+        sql_text("SELECT count(*) FROM messages m JOIN sessions s ON m.session_id = s.id WHERE s.source_terminal_id = :tid"),
+        {"tid": tid}
+    )
+    info.message_count = mc.scalar() or 0
+    return info
+
+
+@router.get("/terminals", response_model=list[TerminalInfo])
+async def list_terminals(db: AsyncSession = Depends(get_db)):
+    """全部终端列表（含在线状态与统计）"""
+    async with db.begin():
+        rows = await db.execute(
+            sql_text("""SELECT t.id, t.terminal_name, t.hostname, t.os_info, t.ip_address,
+                        t.is_online, t.last_seen, t.registered_at, t.metadata_json,
+                        (SELECT count(*) FROM sessions s WHERE s.source_terminal_id = t.id) as session_count
+                        FROM terminals t ORDER BY t.last_seen DESC NULLS LAST""")
+        )
+        out = []
+        for r in rows.fetchall():
+            info = _row_to_terminal(r)
+            cnt = await db.execute(
+                sql_text("""SELECT count(*) FROM messages m
+                            JOIN sessions s ON m.session_id = s.id
+                            WHERE s.source_terminal_id = :tid"""),
+                {"tid": r[0]}
+            )
+            info.message_count = cnt.scalar() or 0
+            out.append(info)
+        return out
+
+
+@router.get("/terminals/online", response_model=list[TerminalInfo])
+async def list_online_terminals(db: AsyncSession = Depends(get_db)):
+    """当前在线终端（is_online=true）"""
+    async with db.begin():
+        rows = await db.execute(
+            sql_text("""SELECT t.id, t.terminal_name, t.hostname, t.os_info, t.ip_address,
+                        t.is_online, t.last_seen, t.registered_at, t.metadata_json,
+                        (SELECT count(*) FROM sessions s WHERE s.source_terminal_id = t.id) as session_count
+                        FROM terminals t WHERE t.is_online = true
+                        ORDER BY t.last_seen DESC""")
+        )
+        out = []
+        for r in rows.fetchall():
+            info = _row_to_terminal(r)
+            cnt = await db.execute(
+                sql_text("""SELECT count(*) FROM messages m
+                            JOIN sessions s ON m.session_id = s.id
+                            WHERE s.source_terminal_id = :tid"""),
+                {"tid": r[0]}
+            )
+            info.message_count = cnt.scalar() or 0
+            out.append(info)
+        return out
+
+
+@router.get("/terminals/{terminal_id}/sessions", response_model=list)
+async def terminal_sessions(terminal_id: str, db: AsyncSession = Depends(get_db)):
+    """终端关联的会话列表（用于共享设置）"""
+    async with db.begin():
+        rows = await db.execute(
+            sql_text("""SELECT s.id, s.title, s.created_at, s.updated_at,
+                        sh.can_share FROM sessions s
+                        LEFT JOIN session_shares sh ON sh.session_id = s.id AND sh.terminal_id = :tid
+                        WHERE s.source_terminal_id = :tid
+                        ORDER BY s.updated_at DESC LIMIT 50"""),
+            {"tid": terminal_id}
+        )
+        return [dict(r) for r in rows.fetchall()]
+
+
+async def _terminal_info(db: AsyncSession, tid: str) -> TerminalInfo:
+    row = await db.execute(
+        sql_text("""SELECT id, terminal_name, hostname, os_info, ip_address,
+                    is_online, last_seen, registered_at, metadata_json,
+                    (SELECT count(*) FROM sessions s WHERE s.source_terminal_id = id) as session_count
+                    FROM terminals WHERE id=:tid"""),
+        {"tid": tid}
+    )
+    r = row.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="终端不存在")
+    return _row_to_terminal(r)
+
+
+def _row_to_terminal(r) -> TerminalInfo:
+    md = r[8] or {}
+    return TerminalInfo(
+        id=str(r[0]), terminal_name=r[1], hostname=r[2] or "", os_info=r[3] or "",
+        ip_address=r[4] or "", is_online=bool(r[5]),
+        last_seen=(r[6].isoformat() if r[6] else ""),
+        registered_at=(r[7].isoformat() if r[7] else ""),
+        session_count=r[9] or 0, message_count=0,
+        source=md.get("source", "") if isinstance(md, dict) else ""
+    )
