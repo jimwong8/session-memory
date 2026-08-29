@@ -43,6 +43,7 @@ class Session(Base):
 
     canvas_mermaid: Mapped[str | None] = mapped_column(Text, nullable=True)
     pyramid_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_terminal_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="session", cascade="all, delete-orphan", order_by="Message.created_at"

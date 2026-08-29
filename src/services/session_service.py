@@ -121,6 +121,7 @@ class SessionService:
             user_id=data.user_id,
             title=data.title,
             metadata_json=metadata,
+            source_terminal_id=data.source_terminal_id,
         )
         self.db.add(session)
         try:

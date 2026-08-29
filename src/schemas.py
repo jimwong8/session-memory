@@ -42,6 +42,7 @@ class SessionCreate(BaseModel):
     visibility: str = Field("private", pattern=r"^(private|team|public)$")
     project_id: str | None = None
     metadata_json: dict | None = None
+    source_terminal_id: str | None = None
 
 
 class SessionResponse(BaseModel):
