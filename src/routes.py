@@ -68,6 +68,9 @@ from src.models import (
 from src.config import settings
 from src.cache import cache
 
+import logging as _logging_mod
+logger = _logging_mod.getLogger("src.routes")
+
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
 AUDIT_DIR = Path("/app/logs/audits")
@@ -333,6 +336,9 @@ async def search_session(
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    import logging as _logging
+    _log = _logging.getLogger("src.routes")
+
     if data.strategy in ("keyword", "vector", "hybrid"):
         hits = await hybrid_recall(
             db,
@@ -341,10 +347,31 @@ async def search_session(
             session_id=session_id,
             limit=data.limit,
         )
+        # ⚠ hybrid_recall 是【只读】的，但它内部的 SELECT 会留一个开着的事务：
+        #    · 后续 db.execute 若撞上脏事务 -> PendingRollbackError -> 整个请求 500
+        #      （表现为 hybrid 偶发 6/8、7/8，而不是稳定失败）
+        #    · 事务迟迟不结束还会在 pg_stat_activity 里留下 idle in transaction，
+        #      长期占着锁、挡住 DDL（曾把一个 ALTER TABLE 卡到超时）
+        #    这里显式结束只读事务，两个问题一起解决。
+        try:
+            if db.in_transaction():
+                await db.rollback()
+        except Exception as exc:
+            _log.warning("post-recall rollback failed: %s", exc)
+
         results = []
         for hit in hits[:data.top_k]:
             stmt = select(Message).where(Message.id == hit.id)
-            result = await db.execute(stmt)
+            try:
+                result = await db.execute(stmt)
+            except Exception as exc:
+                # 兜底：会话仍然脏则回滚后重试一次，绝不让一个脏会话把请求打成 500
+                _log.warning("fetch hit failed (%s), rolling back and retrying", exc)
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                result = await db.execute(stmt)
             msg = result.scalar_one_or_none()
             if msg:
                 results.append(MessageResponse.model_validate(msg))
@@ -715,6 +742,7 @@ async def unified_query(
 ) -> UnifiedQueryResponse:
     """统一查询：向量 + 图谱混合检索"""
     messages = []
+    atoms = []
     entities = []
     relations = []
     decomposed_queries = []
@@ -729,12 +757,24 @@ async def unified_query(
             limit=data.top_k,
         )
         for hit in hits[:data.top_k]:
-            stmt = select(Message).where(Message.id == hit.id)
-            result = await db.execute(stmt)
-            msg = result.scalar_one_or_none()
-            if msg:
-                messages.append(MessageResponse.model_validate(msg))
-
+            try:
+                if hit.table == "memory_atoms":
+                    stmt_a = select(MemoryAtom).where(MemoryAtom.id == hit.id)
+                    res_a = await db.execute(stmt_a)
+                    atom = res_a.scalar_one_or_none()
+                    if atom:
+                        atoms.append(MemoryAtomResponse.model_validate(atom))
+                    continue
+                stmt = select(Message).where(Message.id == hit.id)
+                result = await db.execute(stmt)
+                msg = result.scalar_one_or_none()
+                if msg:
+                    messages.append(MessageResponse.model_validate(msg))
+            except Exception:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
     if data.mode in ("graph", "hybrid"):
         kg_svc = KnowledgeGraphService(db)
         ents, rels = await kg_svc.search(
@@ -765,6 +805,7 @@ async def unified_query(
         session_id=data.session_id,
         top_k=data.top_k,
         messages=messages,
+        atoms=atoms,
         entities=entities,
         relations=relations,
         decomposed_queries=decomposed_queries,
@@ -1080,11 +1121,12 @@ async def admin_dashboard():
         sessions = (await db.execute(text("SELECT count(*) FROM sessions"))).scalar() or 0
         bge = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding IS NOT NULL"))).scalar() or 0
         m3 = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL"))).scalar() or 0
+        nv = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_nv IS NOT NULL"))).scalar() or 0
         return {
             "overall_status": "ok",
             "generated_at": __import__("datetime").datetime.utcnow().isoformat(),
             "health": {"status": "ok", "db_counts": {"messages": msgs, "sessions": sessions}},
-            "capacity_snapshot": {"total_messages": msgs, "active_sessions": sessions, "embed_pct": round(bge/msgs*100,1), "m3_pct": round(m3/msgs*100,1)},
+            "capacity_snapshot": {"total_messages": msgs, "active_sessions": sessions, "embed_pct": round(bge/msgs*100,1), "m3_pct": round(m3/msgs*100,1), "nv": nv, "nv_pct": round(nv/msgs*100,1)},
             "kg_ops": {"status": "ok", "succeeded_total": 0, "pending_total": 0, "running_total": 0, "deadletter_total": 0},
         }
 
@@ -1148,6 +1190,11 @@ async def run_kg_worker_once(
                         job.status = "retry_wait"
                 job.last_error = extract_result.get("reason")
         except Exception as e:
+            # ⚠ except 吞异常后必须 rollback，否则毒化 session（偶发 500，极难定位）
+            try:
+                await db.rollback()
+            except Exception:
+                pass
             job.attempts += 1
             job.last_error = str(e)
             if job.attempts >= 3:
@@ -1764,12 +1811,26 @@ async def ingest_opencode_runtime_event(data: OpenCodeRuntimeEventPayload) -> Pl
 
 @router.get("/admin/raw-events/stats")
 async def get_raw_events_stats():
-    """Aggregate raw_events from central_session DB via direct PG connection"""
+    """Aggregate raw_events from central_session DB via direct PG connection.
+
+    The legacy `central_session` database may not exist anymore; degrade gracefully
+    (available=false) instead of raising a 500 at the caller.
+    """
     import asyncpg, os
     pg_host = os.environ.get("POSTGRES_HOST", "session_memory_postgres")
     pg_user = os.environ.get("POSTGRES_USER", "postgres")
     pg_pass = os.environ.get("POSTGRES_PASSWORD", "postgres")
-    conn = await asyncpg.connect(host=pg_host, port=5432, user=pg_user, password=pg_pass, database="central_session")
+    try:
+        conn = await asyncpg.connect(host=pg_host, port=5432, user=pg_user, password=pg_pass, database="central_session")
+    except Exception as exc:
+        return {
+            "available": False,
+            "reason": f"legacy central_session DB unavailable: {type(exc).__name__}",
+            "total_events": 0,
+            "by_terminal": [],
+            "by_event_type": [],
+            "hourly_volume": [],
+        }
     try:
         total = await conn.fetchval("SELECT count(*) FROM raw_events")
         terminals = await conn.fetch("SELECT terminal_id, count(*) as cnt FROM raw_events GROUP BY terminal_id ORDER BY cnt DESC")
@@ -2055,36 +2116,54 @@ async def decompose_query(data: dict):
 
 
 def _http_embed(text):
-    """Call GPU embedding service (bge-base 768d). Returns list[float] or None."""
-    url = "http://10.100.1.15:8002/v1/embeddings"
+    """查询嵌入 —— 优先 NIM nemotron-3-embed-1b (2048d)，失败回落本地 bge-base (768d)。
+
+    历史包袱：这函数原来打 http://10.100.1.15:8002（那台 GPU 嵌入服务的 :8002 早已
+    不存在，bge-m3 服务在 15 号机上也已崩），所以 /search/weighted 长期处于「必然
+    回落到本地 768」的状态。现在统一走 NIM，返回维度决定下游用哪一列。
+    """
+    # 1) NIM nemotron (2048, 检索必须用 input_type="query")
     try:
-        payload = _json.dumps({"input": [text], "model": "bge-base-zh-v1.5"}).encode()
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            resp = _json.loads(r.read())
-        return resp["data"][0]["embedding"]
-    except Exception:
-        return None
+        from src.services.recall import nim_embed_query
+        v = nim_embed_query(text)
+        if v:
+            return v
+    except Exception as exc:
+        logger.warning("weighted search: nim query embed failed: %s", exc)
+    # 2) 本函数是【同步】函数、且在事件循环里被调用 —— 绝不能在这里
+    #    run_coroutine_threadsafe(get_event_loop())，会同一线程自锁（踩过）。
+    #    本地 768 回落交给外层 async 的 search_weighted 去做。
+    return None
 
 
 @router.get("/search/weighted")
 async def search_weighted(query: str = Query(...), limit: int = Query(10, ge=1, le=50)):
     """Vector search with length penalty"""
     import psycopg2, urllib.request, json as _json
-    query_emb = _http_embed(query)
-    if not query_emb or len(query_emb) != 768:
+    query_emb = _http_embed(query)          # 优先 NIM nemotron (2048)
+    if not query_emb:                       # 回落本地 bge-base (768)，在 async 里 await 才安全
         from src.embedding_service import create_embedding
-        query_emb = await create_embedding(query, force=True)
-        assert len(query_emb) == 768, f"query embedding dim {len(query_emb)} != 768"
+        try:
+            query_emb = await create_embedding(query, force=True)
+        except Exception as exc:
+            logger.warning("weighted search: local embedding failed: %s", exc)
+            return {"error": "embedding unavailable", "results": []}
+    # 维度决定用哪一列（2048 -> embedding_nv；768 -> embedding）；不再 assert 死维度
+    if len(query_emb) == 2048:
+        emb_col = "embedding_nv"
+    elif len(query_emb) == 768:
+        emb_col = "embedding"
+    else:
+        return {"error": f"unsupported embedding dim {len(query_emb)}", "results": []}
     conn = psycopg2.connect(host="postgres", dbname="session_memory", user="postgres", password="postgres")
     cur = conn.cursor()
     cur.execute(
-        """SELECT m.id, m.content, m.role, m.session_id,
-               COALESCE(1.0 - (m.embedding <=> %s::vector), 0.0) AS similarity,
+        f"""SELECT m.id, m.content, m.role, m.session_id,
+               COALESCE(1.0 - (m.{emb_col} <=> %s::vector), 0.0) AS similarity,
                CASE WHEN length(m.content) > 2000 THEN 0.3 ELSE 1.0 END AS length_penalty
-        FROM messages m WHERE m.embedding IS NOT NULL AND m.role IN ('user','assistant')
-        ORDER BY m.embedding <=> %s::vector LIMIT %s""",
-        (str(query_emb), str(query_emb), limit * 5))
+        FROM messages m WHERE m.{emb_col} IS NOT NULL AND vector_dims(m.{emb_col}) = %s AND m.role IN ('user','assistant')
+        ORDER BY m.{emb_col} <=> %s::vector LIMIT %s""",
+        (str(query_emb), len(query_emb), str(query_emb), limit * 5))
     seen = {}
     results = []
     for row in cur.fetchall():
@@ -2276,7 +2355,10 @@ async def terminal_sessions(terminal_id: str, db: AsyncSession = Depends(get_db)
                         ORDER BY s.updated_at DESC LIMIT 50"""),
             {"tid": terminal_id}
         )
-        return [dict(r) for r in rows.fetchall()]
+        # ⚠ dict(Row) 会抛 TypeError: SQLAlchemy 2.0 的 Row 是【值元组】不是映射，
+        #   必须用 r._mapping。症状隐蔽: 只有真有行时才炸，空结果返回 [] 200，
+        #   看起来像数据问题而不是代码 bug（2026-09-22 修复）。
+        return [dict(r._mapping) for r in rows.fetchall()]
 
 
 async def _terminal_info(db: AsyncSession, tid: str) -> TerminalInfo:
@@ -2303,3 +2385,8 @@ def _row_to_terminal(r) -> TerminalInfo:
         session_count=r[9] or 0, message_count=0,
         source=md.get("source", "") if isinstance(md, dict) else ""
     )
+
+
+
+
+

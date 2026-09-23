@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import get_db
 from src.services.task_router import proactive_prefetch
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1", tags=["proactive"])
 
 
 class TaskPrefetchRequest(BaseModel):
@@ -39,6 +39,7 @@ class HybridSearchResponse(BaseModel):
     query: str
     vector_results: list
     entity_results: list
+    atoms: list = []
     combined_tokens: int
 
 
@@ -67,19 +68,32 @@ async def hybrid_search(
     db: AsyncSession = Depends(get_db),
 ):
     """Hybrid search: vector similarity + entity retrieval."""
-    from sentence_transformers import SentenceTransformer
-    from src.config import settings
+    from src.embedding_service import create_embedding
 
-    model = SentenceTransformer(settings.embedding_model)
-    emb = model.encode(body.query, convert_to_numpy=True).tolist()
+    # ⚠ 向量列必须与查询向量的维度一致, 否则维度不匹配 / 静默漏数据:
+    #     embedding_nv = 2048 (NIM nemotron, 生产检索已统一到此)
+    #     embedding    = 768  (本地 bge-base, 仅作回退)
+    #   只查旧列会让迁移后【只有 embedding_nv】的新消息/原子被静默漏掉 (2026-09-22 修复)。
+    emb_col = "embedding"
+    emb = None
+    try:
+        from src.services.recall import nim_embed_query
+        emb = nim_embed_query(body.query)
+    except Exception:
+        emb = None
+    if emb is not None and len(emb) == 2048:
+        emb_col = "embedding_nv"
+    else:
+        emb = await create_embedding(body.query)
+        emb_col = "embedding"
     emb_s = "[" + ",".join(f"{x:.6f}" for x in emb) + "]"
 
     # Vector search with literal embedding
     vec_sql = sa_text(
         "SELECT id, LEFT(content, 200) as snippet, role, "
-        "embedding <=> '%s'::vector(384) as dist "
+        f"{emb_col} <=> '%s'::vector as dist "
         "FROM messages "
-        "WHERE embedding IS NOT NULL AND role IN ('user', 'assistant') "
+        f"WHERE {emb_col} IS NOT NULL AND role IN ('user', 'assistant') "
         "ORDER BY dist LIMIT %d" % (emb_s, body.top_k)
     )
     vec_rows = (await db.execute(vec_sql)).all()
@@ -115,9 +129,33 @@ async def hybrid_search(
     combined_tokens += sum(len(r["name"].split()) for r in entity_results)
     combined_tokens = int(combined_tokens * 1.3)
 
+    # 搜 memory_atoms（含 ERL 教训），768维
+    atoms = []
+    try:
+        atom_sql = sa_text(
+            "SELECT id, kind, title, LEFT(content, 200) as content, "
+            f"{emb_col} <=> '%s'::vector as dist "
+            "FROM memory_atoms "
+            f"WHERE {emb_col} IS NOT NULL AND superseded_by IS NULL "
+            "ORDER BY dist LIMIT %d" % (emb_s, body.top_k)
+        )
+        atom_rows = (await db.execute(atom_sql)).all()
+        atoms = [
+            {"id": str(r[0]), "kind": r[1], "title": r[2] or "", "content": r[3], "distance": round(float(r[4]), 4)}
+            for r in atom_rows
+        ]
+    except Exception:
+        # ⚠ 吞掉异常后必须 rollback, 否则同一个 session 被毒化,
+        #    后续任何 db 查询都会 PendingRollbackError (偶发 500, 极难定位)。
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
     return HybridSearchResponse(
         query=body.query,
         vector_results=vector_results,
         entity_results=entity_results,
+        atoms=atoms,
         combined_tokens=combined_tokens,
     )

@@ -73,8 +73,8 @@ async def system_stats():
     return _stats_cache
 
 _stats_cache = {"messages": 0, "sessions": 0, "entities": 0, "relations": 0,
-                 "atoms": 0, "scenarios": 0, "bge": 0, "m3": 0,
-                 "bge_pct": 0, "m3_pct": 0, "kg_done": 0, "kg_pending": 0, "kg_failed": 0}
+                 "atoms": 0, "scenarios": 0, "bge": 0, "m3": 0, "nv": 0,
+                 "bge_pct": 0, "m3_pct": 0, "nv_pct": 0, "kg_done": 0, "kg_pending": 0, "kg_failed": 0}
 
 async def _do_refresh():
     """Refresh stats cache"""
@@ -105,6 +105,12 @@ async def _do_refresh():
             try:
                 est[tbl] = (await db.execute(text(f"SELECT count(*) FROM {tbl}"))).scalar() or 0
             except Exception:
+                # ⚠ except 吞掉异常后必须 rollback：否则同一 session 被毒化，
+                #    后续任何 db 查询都会 PendingRollbackError（偶发 500，极难定位）。
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 est[tbl] = est.get(tbl, 0)
         msgs = est.get('messages', 0)
         # Use partial-index-friendly counts (fast) for bge/m3; read KG progress from
@@ -112,6 +118,7 @@ async def _do_refresh():
         # estimate made kg_done a constant 0 (dashboard "false zero" bug).
         bge = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding IS NOT NULL"))).scalar() or 0
         m3 = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL"))).scalar() or 0
+        nv = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_nv IS NOT NULL"))).scalar() or 0
         kg_rows = (await db.execute(text("SELECT status, count(*) FROM kg_jobs GROUP BY status"))).fetchall()
         kg_counts = {r[0]: r[1] for r in kg_rows}
         kg_done = kg_counts.get('completed', 0)
@@ -122,8 +129,9 @@ async def _do_refresh():
             "messages": msgs, "sessions": est.get('sessions', 0),
             "entities": est.get('kg_entities', 0), "relations": est.get('kg_relations', 0),
             "atoms": est.get('memory_atoms', 0), "scenarios": est.get('memory_scenarios', 0),
-            "bge": bge, "m3": m3,
+            "bge": bge, "m3": m3, "nv": nv,
             "bge_pct": round(bge/max(msgs,1)*100,1), "m3_pct": round(m3/max(msgs,1)*100,1),
+            "nv_pct": round(nv/max(msgs,1)*100,1),
             "kg_done": kg_done, "kg_pending": kg_pending, "kg_failed": kg_failed,
         }
 
