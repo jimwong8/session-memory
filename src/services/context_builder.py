@@ -111,6 +111,10 @@ class ContextBuilder:
                             budget -= memory_tokens
         except Exception:
             logger.warning("记忆原子注入失败，跳过", exc_info=True)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
 
         if project_id:
             try:
@@ -131,6 +135,10 @@ class ContextBuilder:
                         budget -= shared_tokens
             except Exception:
                 logger.warning("项目级摘要共享查询失败，跳过", exc_info=True)
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
 
         try:
             kg_entities, kg_relations = await self.kg_svc.search(user_message, session_id=session_id, top_k=5)
@@ -145,6 +153,10 @@ class ContextBuilder:
                     budget -= graph_tokens
         except Exception:
             logger.warning("知识图谱查询失败，跳过", exc_info=True)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
 
         if project_id:
             try:

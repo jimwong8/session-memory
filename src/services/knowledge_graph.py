@@ -262,6 +262,10 @@ class KnowledgeGraphService:
                 entity_ids = [row[0] for row in ft_result.all()]
             except Exception:
                 pass
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
 
         entity_stmt = select(KGEntity)
         relation_stmt = select(KGRelation)
