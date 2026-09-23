@@ -94,6 +94,11 @@ async def proactive_prefetch(
                 ent_session_ids.append(sid)
     except Exception as e:
         logger.warning("entity prefetch failed: %s", e)
+        # ⚠ 吞异常后必须回滚: 否则同一 db session 被毒化, 后续查询 PendingRollbackError
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
     messages: list[dict[str, Any]] = []
     if ent_session_ids:
@@ -122,6 +127,11 @@ async def proactive_prefetch(
                 })
         except Exception as e:
             logger.warning("message prefetch failed: %s", e)
+            # ⚠ 吞异常后必须回滚: 否则同一 db session 被毒化, 后续查询 PendingRollbackError
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
     recommended_skills = TASK_SKILL_MAP.get(task_type, [])
 
