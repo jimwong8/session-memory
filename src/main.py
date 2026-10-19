@@ -117,7 +117,6 @@ async def _do_refresh():
         # the kg_jobs table (real status), not a messages-table estimate — the old
         # estimate made kg_done a constant 0 (dashboard "false zero" bug).
         bge = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding IS NOT NULL"))).scalar() or 0
-        m3 = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL"))).scalar() or 0
         nv = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_nv IS NOT NULL"))).scalar() or 0
         kg_rows = (await db.execute(text("SELECT status, count(*) FROM kg_jobs GROUP BY status"))).fetchall()
         kg_counts = {r[0]: r[1] for r in kg_rows}
@@ -130,7 +129,7 @@ async def _do_refresh():
             "entities": est.get('kg_entities', 0), "relations": est.get('kg_relations', 0),
             "atoms": est.get('memory_atoms', 0), "scenarios": est.get('memory_scenarios', 0),
             "bge": bge, "m3": m3, "nv": nv,
-            "bge_pct": round(bge/max(msgs,1)*100,1), "m3_pct": round(m3/max(msgs,1)*100,1),
+            "bge_pct": round(bge/max(msgs,1)*100,1), "m3_pct": 0.0,
             "nv_pct": round(nv/max(msgs,1)*100,1),
             "kg_done": kg_done, "kg_pending": kg_pending, "kg_failed": kg_failed,
         }

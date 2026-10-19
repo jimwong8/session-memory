@@ -49,7 +49,7 @@ def _pct(part, whole):
 embed_done = q("SELECT count(*) FROM messages WHERE embedding IS NOT NULL")
 embed_pct = _pct(embed_done, msg_count)
 try:
-    m3_done = q("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL")
+    m3_done = 0  # embedding_m3 列已废弃并删除（2026-10-19），保留字段兼容前端
 except Exception:
     conn.rollback()
     m3_done = 0

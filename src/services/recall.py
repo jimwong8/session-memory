@@ -197,6 +197,13 @@ class VectorSearcher:
         # messages / memory_atoms / memory_scenarios 三张表都已有 embedding_nv，
         # 故统一走 nemotron；失败再回落 768。（早期只有 messages 有该列，那时按表限制过。）
         # 注意：memory_atoms 的旧 embedding 列仍被 atom_builder 的向量去重使用，不动它。
+        # ⚠️ 表名归一化必须【前置】到 use_nim 判断之前。
+        #   否则传入 "memory_scenarios_v2" 时不匹配元组 → use_nim=False →
+        #   走本地 bge 路径 → 首次调用要懒加载 sentence-transformers 模型（实测 11.3s），
+        #   而该表 601/601 行都有 embedding_nv，本可以走快的 NIM 路径。
+        #   （与下方注释「三张表统一走 nemotron」的意图一致。）
+        if table == "memory_scenarios_v2":
+            table = "memory_scenarios"
         use_nim = table in ("messages", "memory_atoms", "memory_scenarios")
         emb_col = "embedding_nv" if use_nim else "embedding"
         embedding = None
@@ -235,9 +242,9 @@ class VectorSearcher:
         #    session_ids(uuid[]) 和 narrative_md，**没有 session_id**；
         #    过去 where 在归一化之前就用死 session_id，导致每条 scenarios 检索都
         #    UndefinedColumnError（该告警在日志里刷了很久，非本次 NIM 改动引入）。
-        content_col = "narrative_md" if table == "memory_scenarios_v2" else "content"
-        if table == "memory_scenarios_v2":
-            table = "memory_scenarios"
+        # ⚠️ 表名已在上方归一化为 "memory_scenarios"，这里必须两个名字都认，
+        #    否则 memory_scenarios 会去取不存在的 content 列（实测 UndefinedColumnError）。
+        content_col = "narrative_md" if table in ("memory_scenarios", "memory_scenarios_v2") else "content"
         conditions = []
         if session_id:
             if table == "memory_scenarios":

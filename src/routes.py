@@ -867,6 +867,55 @@ async def get_user_persona(
     return PersonaResponse.model_validate(persona)
 
 
+
+
+@router.get("/users/{user_id}/observations")
+async def get_user_observations(
+    user_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取用户合并后的观察（hindsight observation 层）"""
+    from sqlalchemy import text
+    stmt = text("""
+        SELECT o.id, o.text, o.proof_count, o.source_atom_ids,
+               o.created_at, o.updated_at
+        FROM observations o
+        WHERE EXISTS (
+            SELECT 1 FROM memory_atoms a
+            WHERE a.id = ANY(o.source_atom_ids) AND a.user_id = :uid
+        )
+        ORDER BY o.updated_at DESC
+        LIMIT :lim
+    """).bindparams(uid=user_id, lim=limit)
+    result = await db.execute(stmt)
+    return [
+        {
+            "id": str(r.id),
+            "text": r.text,
+            "proof_count": r.proof_count,
+            "source_atom_ids": [str(x) for x in (r.source_atom_ids or [])],
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        }
+        for r in result.all()
+    ]
+
+
+@router.post("/observations/consolidate")
+async def trigger_consolidation(
+    batch_size: int = Query(5, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动触发 observation 合并"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("oc", "/app/migrate_consolidator.py")
+    if spec is None:
+        return {"status": "error", "message": "consolidate 模块未部署"}
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return await m.consolidate_batch(db, batch_size=batch_size)
+
 @router.get("/sessions/{session_id}/atoms", response_model=list[MemoryAtomResponse])
 async def get_session_atoms(
     session_id: uuid.UUID,
@@ -1120,13 +1169,12 @@ async def admin_dashboard():
         msgs = (await db.execute(text("SELECT count(*) FROM messages"))).scalar() or 0
         sessions = (await db.execute(text("SELECT count(*) FROM sessions"))).scalar() or 0
         bge = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding IS NOT NULL"))).scalar() or 0
-        m3 = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_m3 IS NOT NULL"))).scalar() or 0
         nv = (await db.execute(text("SELECT count(*) FROM messages WHERE embedding_nv IS NOT NULL"))).scalar() or 0
         return {
             "overall_status": "ok",
             "generated_at": __import__("datetime").datetime.utcnow().isoformat(),
             "health": {"status": "ok", "db_counts": {"messages": msgs, "sessions": sessions}},
-            "capacity_snapshot": {"total_messages": msgs, "active_sessions": sessions, "embed_pct": round(bge/msgs*100,1), "m3_pct": round(m3/msgs*100,1), "nv": nv, "nv_pct": round(nv/msgs*100,1)},
+            "capacity_snapshot": {"total_messages": msgs, "active_sessions": sessions, "embed_pct": round(bge/msgs*100,1), "m3_pct": 0.0, "nv": nv, "nv_pct": round(nv/msgs*100,1)},
             "kg_ops": {"status": "ok", "succeeded_total": 0, "pending_total": 0, "running_total": 0, "deadletter_total": 0},
         }
 

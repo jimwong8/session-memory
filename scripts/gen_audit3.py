@@ -38,7 +38,7 @@ kg_done = q("SELECT count(*) FROM messages WHERE role IN ('user','assistant') AN
 print("[8/12] embed_pct...", time.time()-start)
 embed_pct = q("SELECT round(count(*) FILTER (WHERE embedding IS NOT NULL)*100.0/count(*),1) FROM messages")
 print("[9/12] m3_pct...", time.time()-start)
-m3_pct = q("SELECT round(count(*) FILTER (WHERE embedding_m3 IS NOT NULL)*100.0/count(*),1) FROM messages")
+m3_pct = 0  # embedding_m3 列已废弃并删除（2026-10-19），保留字段兼容前端
 print("[10/12] dups...", time.time()-start)
 dups = 0
 try:
