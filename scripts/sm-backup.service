@@ -1,0 +1,8 @@
+[Unit]
+Description=Session Memory PostgreSQL daily backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/jimwong/sm-backup.sh
