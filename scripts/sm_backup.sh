@@ -43,6 +43,22 @@ fi
 # 7 份约 30G，安全）。扩容前是 3 天。
 find "$BACKUP_DIR" -name 'sm_*.dump' -mtime +7 -delete 2>/dev/null
 
+# --- WAL 归档异地推送（PITR 前提：基础备份在本地/异地，WAL 决定可回放的时间点）---
+REMOTE_WAL_DIR="/SAS12T/backup/sm-wal"
+if timeout 8 ssh -o BatchMode=yes -o ConnectTimeout=5 root@10.100.1.254 true 2>/dev/null; then
+    _wal_new=$(docker exec session_memory_postgres sh -c \
+        "ls -1 /var/lib/postgresql/data/wal_archive/ 2>/dev/null | grep -c '^0000'" 2>/dev/null | tr -d '\r\n')
+    if [ "${_wal_new:-0}" -gt 0 ]; then
+        echo "[$(date +%H:%M:%S)] 推送 WAL 归档（${_wal_new} 个文件）到异地"
+        docker exec session_memory_postgres sh -c \
+            "cd /var/lib/postgresql/data/wal_archive && tar cf - \$(ls -1 | grep '^0000')" 2>/dev/null \
+            | ssh -o BatchMode=yes -o ConnectTimeout=10 root@10.100.1.254 \
+              "mkdir -p ${REMOTE_WAL_DIR} && tar xf - -C ${REMOTE_WAL_DIR} && ls -t ${REMOTE_WAL_DIR} | tail -n +1000 | xargs -r rm -f" 2>/dev/null \
+            && echo "[$(date +%H:%M:%S)] ✅ WAL 归档异地推送完成" \
+            || echo "[$(date +%H:%M:%S)] ⚠️ WAL 归档异地推送失败"
+    fi
+fi
+
 # --- 异地副本：推送到 PVE tw (10.100.1.254) 的 SAS12T/backup/sm-db ---
 # 13 号机是 QEMU VM，宿主（疑似 PVE253，当前不可达）故障会连坐；
 # 254 是独立物理机 + PBS 宿主，构成真正的异地副本。
