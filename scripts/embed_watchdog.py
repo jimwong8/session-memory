@@ -14,6 +14,7 @@ cron 每 30 分钟跑一次；只在异常时输出，正常时完全安静。
 """
 import os
 import subprocess
+import time
 import sys
 import urllib.request
 from datetime import datetime
@@ -50,13 +51,21 @@ if nkeys < MIN_KEYS:
     problems.append(f"key 池只有 {nkeys} 个（下限 {MIN_KEYS}）—— 文件可能丢失或未挂载")
 
 # --- 2) NIM 查询是否真能用（最关键的静默故障） ---
-out, err, _ = run(
+_probe_cmd = (
     f"docker exec {CONTAINER} python3 -c \""
     f"import sys; sys.path.insert(0,'/app');"
     f"from src.services.recall import nim_embed_query, _NIM_KEYFILE;"
     f"v = nim_embed_query('看门狗探活');"
     f"print('KEYFILE=' + _NIM_KEYFILE);"
     f"print('DIM=' + str(len(v) if v else 0))\" 2>&1 | tail -2")
+out, err, _ = run(_probe_cmd)
+# 2026-09-29: 冷进程单发探针(冷 TLS + 空 LRU)可能 >1.2s 而误报 dim=0。
+# 实测 09-23/24/26 三次报警的前后 30 分钟探针都正常 → 失败再试 2 次确认。
+for _retry in range(2):
+    if "DIM=2048" in out:
+        break
+    time.sleep(2)
+    out, err, _ = run(_probe_cmd)
 keyfile_line = next((l for l in out.split("\n") if l.startswith("KEYFILE=")), "KEYFILE=?")
 dim_line = next((l for l in out.split("\n") if l.startswith("DIM=")), "DIM=0")
 try:
@@ -107,6 +116,45 @@ try:
         problems.append(f"memory_scenarios nv 覆盖 {100.0*scnv/sc:.1f}%（低于 80%）")
 except (ValueError, IndexError):
     pass
+
+# --- 6) 磁盘水位（备份 + WAL + 索引都在同一文件系统上）---
+try:
+    st = os.statvfs("/")
+    used_pct = 100.0 * (st.f_blocks - st.f_bfree) / st.f_blocks
+    if used_pct >= 85.0:
+        problems.append(f"磁盘使用率 {used_pct:.1f}%（阈值 85%）—— 备份/WAL/索引会写满")
+    if used_pct >= 80.0:
+        problems.append(f"磁盘使用率 {used_pct:.1f}%（预警 80%）")
+except Exception as e:
+    problems.append(f"磁盘水位检查失败: {type(e).__name__}")
+
+# --- 7) HNSW 索引有效性（无效索引 = 向量检索退化成全表扫描，37s 一次）---
+out, _, _ = psql("""SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+                    WHERE c.relname LIKE '%hnsw%' AND NOT i.indisvalid;""")
+try:
+    bad = [x.strip() for x in out.splitlines() if x.strip()]
+    if bad:
+        problems.append(f"{len(bad)} 个 HNSW 索引无效（向量检索会退化成全表扫描）: {', '.join(bad[:3])}")
+    out2, _, _ = psql("""SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+                         WHERE c.relname LIKE '%hnsw%' AND i.indisvalid;""")
+    n_ok = int(out2.strip() or 0)
+    if n_ok < 6:
+        problems.append(f"HNSW 索引只有 {n_ok} 个有效（预期 6 个）—— 某些表会退化成顺序扫描")
+except (ValueError, IndexError):
+    pass
+
+# --- 8) 召回延迟（超时预算 3s，超了等于召回被砍成 0 命中）---
+try:
+    t0 = time.time()
+    with urllib.request.urlopen("http://127.0.0.1:8000/api/v1/recall/bridge", timeout=10) as r:
+        r.read()
+    dt = time.time() - t0
+    if dt > 3.0:
+        problems.append(f"recall 端点耗时 {dt:.2f}s（超过 3s 预算）")
+except urllib.error.HTTPError:
+    pass          # 4xx 说明参数不对，不代表慢
+except Exception as e:
+    problems.append(f"recall 端点不可达: {type(e).__name__}")
 
 if problems:
     ts = datetime.now().strftime("%F %T")

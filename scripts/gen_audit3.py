@@ -42,7 +42,8 @@ m3_pct = 0  # embedding_m3 列已废弃并删除（2026-10-19），保留字段�
 print("[10/12] dups...", time.time()-start)
 dups = 0
 try:
-    dups = q("SELECT count(*) FROM kg_duplicates")
+    # kg_duplicates 表在当前 schema 中不存在（实测 2026-10-19），改用实时统计同名实体
+    dups = q("SELECT count(*) FROM (SELECT session_id, name FROM kg_entities GROUP BY session_id, name HAVING COUNT(*) > 1) x")
 except: pass
 print("[11/12] saving...", time.time()-start)
 
