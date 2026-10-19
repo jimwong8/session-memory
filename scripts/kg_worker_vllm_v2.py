@@ -303,6 +303,10 @@ def extract(content):
                 continue
 
             LAST_ERROR_DETAIL.append(f"{etype}: {err[:110]}")
+            # 解析类失败（非基础设施故障）重试耗尽 → 降级为 informational，
+            # 不隔离：这条消息只是「抽不出 KG」，不是系统错误，不该堆积 quarantined。
+            if err.startswith("llm_returned_"):
+                return {"summary": "", "outcome": "informational", "triples": []}
             return None
 
     return None
