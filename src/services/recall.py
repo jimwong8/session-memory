@@ -323,6 +323,7 @@ class VectorSearcher:
 # 存库用 input_type="passage"，检索必须用 "query" —— 用错会显著降低召回。
 # 无 NIM key / 网络失败 / 超时都返回 None，调用方回退到本地 bge-base（768）。
 # ---------------------------------------------------------------------------
+import re as _re
 import os as _os
 import json as _json
 import urllib.request as _urlreq
@@ -394,6 +395,24 @@ def _nim_keys() -> list[str]:
     return _nim_keys_cache
 
 
+# ⚠️ 含【图片字面量】的文本会被 NIM 判定为多模态输入 → 400
+#    "image inputs require VLM serving" / "input_type=query is not supported with images"，
+#    导致查询嵌入静默返回 None、检索回落 768 —— 而 768 的覆盖率远低于 nv，
+#    这类消息的召回质量会断崖式下降（2026-10-19 实测）。
+#    清洗正则与 backfill_nim_embed_par.py 的 sanitize() 保持一致。
+_IMG_LIT_RE = _re.compile(
+    r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+"
+    r"|!\[[^\]]*\]\([^)]{0,500}\)"
+    r"|<image[^>]{0,200}>"
+    r"|(?:[A-Za-z0-9+/]{4}){80,}={0,2}"          # 裸 base64 长串
+)
+
+
+def _sanitize_for_nim(text: str) -> str:
+    """清洗图片字面量后再送 NIM（否则 400 → 静默降级 768）。"""
+    return _IMG_LIT_RE.sub(" [图片] ", text)[:4000]
+
+
 def nim_embed_query(text: str) -> list[float] | None:
     """用 NIM nemotron 做【查询】嵌入（2048 维）；任何失败返回 None。
 
@@ -412,7 +431,7 @@ def nim_embed_query(text: str) -> list[float] | None:
     if not keys:
         return None
     payload = {
-        "input": [text[:4000]],
+        "input": [_sanitize_for_nim(text)],
         "model": _NIM_MODEL,
         "input_type": "query",
         "encoding_format": "float",
