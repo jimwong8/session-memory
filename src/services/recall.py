@@ -222,6 +222,14 @@ class VectorSearcher:
             return []
         dim = len(embedding)
         emb_str = "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+        # ⚠️ 必须用【带类型的 cast 表达式】做距离运算，否则 planner 无法命中 HNSW 索引。
+        #   实测（2026-10-19）：全局检索
+        #     ORDER BY embedding      <=> q::vector      → 37,193 ms（不命中，顺序扫描）
+        #     ORDER BY embedding::vector(768) <=> q::vector(768) → 59 ms（命中 HNSW，186×）
+        #   2048 维列用 halfvec（pgvector 0.8.x 的 hnsw 上限：vector 2000 维 / halfvec 4000 维），
+        #   索引定义：USING hnsw ((embedding_nv::halfvec(2048)) halfvec_cosine_ops)
+        #   注意：索引是表达式索引，查询侧表达式必须【逐字一致】才能匹配。
+        vec_type = "halfvec(2048)" if dim == 2048 else f"vector({dim})"
 
         # ⚠ 表名/内容列必须先归一化，再拼 where —— memory_scenarios 的列是
         #    session_ids(uuid[]) 和 narrative_md，**没有 session_id**；
@@ -246,7 +254,7 @@ class VectorSearcher:
             WHERE {where}
               AND {emb_col} IS NOT NULL
               AND vector_dims({emb_col}) = :dim
-            ORDER BY {emb_col} <=> '{emb_str}'::vector
+            ORDER BY ({emb_col}::{vec_type}) <=> '{emb_str}'::{vec_type}
             LIMIT :lim
         """)
 
@@ -276,7 +284,7 @@ class VectorSearcher:
                         WHERE {where}
                           AND embedding IS NOT NULL
                           AND vector_dims(embedding) = :dim
-                        ORDER BY embedding <=> '{fb_str}'::vector
+                        ORDER BY (embedding::vector(768)) <=> '{fb_str}'::vector(768)
                         LIMIT :lim
                     """)
                     result = await self.db.execute(sql_fb.bindparams(lim=limit, dim=768))
@@ -407,7 +415,15 @@ def nim_embed_query(text: str) -> list[float] | None:
     try:
         cli = _nim_client()
         # ⚠ 每路检索总预算只有 2s：NIM 必须快速失败，否则整个检索被取消 -> 返回 0 条
-        for attempt in range(1):
+        # 2026-09-29: 原为 range(1) 单次尝试且只用 keys[0] —— 实测 09-23/24/26
+        # 三次「看门狗报 dim=0」均为冷进程 + 与 10 分钟回填同刻抢 NIM 额度,
+        # 单次超 1.2s 即 return None → 检索静默回落 768。
+        # 改: 最多 2 次尝试, 但【只在第一次快速失败(<0.6s)时才换 key 重试】——
+        # 慢失败(已花掉 1.2s 超时)不重试, 以守住 2s 总预算。
+        _t0 = time.monotonic()
+        for attempt in range(2):
+            if attempt and time.monotonic() - _t0 > 0.6:
+                break
             k = keys[attempt % len(keys)]
             try:
                 r = cli.post(_NIM_URL, json=payload,
@@ -581,6 +597,13 @@ async def hybrid_recall(
                 results.append(result)
         except asyncio.TimeoutError:
             errors.append(f"{name}: timed out")
+            # ⚠️ 超时被取消的查询同样会把 session 留在坏事务里，
+            #    不回滚的话后续搜索全部报 "Can't reconnect until invalid transaction
+            #    is rolled back"（实测 2026-10-19：向量检索超时 → 整个 hybrid 召回 0 命中）。
+            try:
+                await db.rollback()
+            except Exception as rb_exc:
+                logger.debug("hybrid_recall rollback failed after timeout on %s: %s", name, rb_exc)
         except Exception as exc:
             errors.append(f"{name}: {exc}")
             logger.debug("ranker %s failed (continuing): %s", name, exc)
