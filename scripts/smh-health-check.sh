@@ -19,10 +19,35 @@ SMH_DIR="${SMH_DIR:-$HOME/.session-memory-agent}"
 ALERT=0
 [ "${1:-}" = "--alert" ] && ALERT=1
 
+# ⚠️ 本脚本【跑在 13 号机上】。原先用 `ssh jimwong@10.100.1.13` 去查 13 号机，
+#    但 13 号机没配回环密钥（ssh 自己 Permission denied）⇒ Redis/CPU/写入速率
+#    三项检查【全部静默失效】，每 10 分钟误报 3 个问题（2026-10-19 实测）。
+#    改为：能本地执行就本地执行，仅在非本机时才走 ssh。
+IS_LOCAL_SM=0
+if [ "$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -c '^10\.100\.1\.13$')" = "1" ] \
+   || [ -n "${SMH_LOCAL:-}" ]; then
+    IS_LOCAL_SM=1
+fi
+
+# 在 13 号机上执行命令；非本机时退回 ssh
+sm_exec() {
+    if [ "$IS_LOCAL_SM" = "1" ]; then
+        bash -c "$1" 2>/dev/null
+    else
+        ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 "$1" 2>/dev/null
+    fi
+}
+sm_reachable() {
+    if [ "$IS_LOCAL_SM" = "1" ]; then return 0; fi
+    ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 'true' 2>/dev/null
+}
+
 issues=0
 warn() {
     echo "⚠️  $1"
     issues=$((issues + 1))
+    WARN_LINES="${WARN_LINES:-}⚠️  $1
+"
 }
 ok() {
     echo "✅ $1"
@@ -33,7 +58,10 @@ echo "=== Session Memory 健康检查 $(date '+%Y-%m-%d %H:%M:%S') ==="
 # 1. watch 循环数（本机）
 echo ""
 echo "--- 1. watch 循环检查（本机）---"
-watch_loops=$(ps -ef 2>/dev/null | grep -cE "sleep (10|60)$" || echo 0)
+# ⚠️ `grep -c` 无匹配时退出码为 1，`|| echo 0` 会追加一行 → 变量变成 "0\n0"，
+#    导致 `[ "$v" -gt 3 ]` 报 "integer expression expected" 而比较失效（2026-10-19 实测）。
+watch_loops=$(ps -ef 2>/dev/null | grep -cE "sleep (10|60)$" || true)
+watch_loops=$(echo "$watch_loops" | tr -dc '0-9')
 echo "  sleep 循环: $watch_loops 个"
 if [ "$watch_loops" -gt 3 ]; then
     warn "watch 循环堆积 ($watch_loops > 3)，可能再次触发写入风暴！检查: pgrep -af 'memory_hook'"
@@ -44,8 +72,9 @@ fi
 # 2. Redis key 总量（13号机）
 echo ""
 echo "--- 2. Redis key 总量 ---"
-if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=6 jimwong@10.100.1.13 'true' 2>/dev/null; then
-    redis_keys=$(ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 'docker exec session_memory_redis redis-cli dbsize 2>/dev/null' 2>/dev/null || echo 0)
+if sm_reachable; then
+    redis_keys=$(sm_exec 'docker exec session_memory_redis redis-cli dbsize 2>/dev/null' | tr -d '\r\n')
+    [ -z "$redis_keys" ] && redis_keys=0
     echo "  Redis 总 key: $redis_keys"
     if [ "${redis_keys:-0}" -gt 1000000 ]; then
         warn "Redis key 过多 ($redis_keys > 100万)，SCAN/KEYS 会变慢！可运行: bash /home/jimwong/session-memory-backend/scripts/redis-cache-cleanup.sh --apply"
@@ -74,8 +103,9 @@ fi
 # 4. 13号机 worker CPU
 echo ""
 echo "--- 4. 13号机 worker CPU ---"
-if ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 'true' 2>/dev/null; then
-    cpu=$(ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 'ps aux 2>/dev/null | grep "spawn_main" | grep -v grep | awk "{print int(\$3)}" | sort -rn | head -1' 2>/dev/null | tr -d '\r\n' || echo 0)
+if sm_reachable; then
+    cpu=$(sm_exec 'ps aux 2>/dev/null | grep "spawn_main" | grep -v grep | awk "{print int(\$3)}" | sort -rn | head -1' | tr -d '\r\n')
+    [ -z "$cpu" ] && cpu=0
     echo "  最高 worker CPU: ${cpu}%"
     if [ "${cpu:-0}" -gt 60 ]; then
         warn "worker CPU 过高 (${cpu}% > 60%)"
@@ -89,8 +119,9 @@ fi
 # 5. 消息写入速率（1 分钟）
 echo ""
 echo "--- 5. 消息写入速率 ---"
-if ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 'true' 2>/dev/null; then
-    writes=$(ssh -o BatchMode=yes -o ConnectTimeout=8 jimwong@10.100.1.13 'docker logs session_memory_api --since 1m 2>/dev/null | grep -c "POST /api/v1/sessions/.*/messages.*201"' 2>/dev/null | tr -d '\r\n' || echo 0)
+if sm_reachable; then
+    writes=$(sm_exec 'docker logs session_memory_api --since 1m 2>/dev/null | grep -c "POST /api/v1/sessions/.*/messages.*201"' | tr -d '\r\n')
+    [ -z "$writes" ] && writes=0
     echo "  近 1 分钟写入: $writes 条"
     if [ "${writes:-0}" -gt 100 ]; then
         warn "写入速率异常高 ($writes 条/分 > 100)，可能有写入风暴！检查: ps -ef | grep memory_hook"
@@ -123,6 +154,11 @@ echo ""
 echo "=== 检查完成: $issues 个问题 ==="
 if [ "$issues" -gt 0 ]; then
     echo "⚠️  存在告警，请关注上述问题"
+    # 外发 Telegram（只写日志的告警等于没有告警）
+    if [ -x /home/jimwong/sm_notify.sh ]; then
+        printf '%s' "${WARN_LINES:-}" | /home/jimwong/sm_notify.sh \
+            "❌ Session Memory 健康检查异常（$issues 项）" 2>/dev/null || true
+    fi
     exit 1
 else
     echo "✅ 全部正常"
