@@ -128,7 +128,8 @@ async def _do_refresh():
             "messages": msgs, "sessions": est.get('sessions', 0),
             "entities": est.get('kg_entities', 0), "relations": est.get('kg_relations', 0),
             "atoms": est.get('memory_atoms', 0), "scenarios": est.get('memory_scenarios', 0),
-            "bge": bge, "m3": m3, "nv": nv,
+            # m3 列已废弃删除（2026-10-19），保留字段值 0 兼容前端
+            "bge": bge, "m3": 0, "nv": nv,
             "bge_pct": round(bge/max(msgs,1)*100,1), "m3_pct": 0.0,
             "nv_pct": round(nv/max(msgs,1)*100,1),
             "kg_done": kg_done, "kg_pending": kg_pending, "kg_failed": kg_failed,
