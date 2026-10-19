@@ -401,10 +401,13 @@ def _nim_keys() -> list[str]:
 #    这类消息的召回质量会断崖式下降（2026-10-19 实测）。
 #    清洗正则与 backfill_nim_embed_par.py 的 sanitize() 保持一致。
 _IMG_LIT_RE = _re.compile(
-    r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+"
-    r"|!\[[^\]]*\]\([^)]{0,500}\)"
-    r"|<image[^>]{0,200}>"
-    r"|(?:[A-Za-z0-9+/]{4}){80,}={0,2}"          # 裸 base64 长串
+    # ⚠️ data:image 引用一律清洗：NIM 会把任何 data:image/* 判定为多模态输入 → 400。
+    #    不限定 mime 字符集与是否带 base64 段（实际出现过 data:image/... 省略写法
+    #    与 data:image/*;base64,... 星号 mime 两种都漏过）。
+    r"data:image/[^\s\"'<>\u3000-\u303f\uff00-\uffef]{0,200}"
+    r"|!\[[^\]]*\]\([^)]{0,500}\)"                 # markdown 图片
+    r"|<image[^>]{0,200}>"                          # <image> 标签
+    r"|(?:[A-Za-z0-9+/]{4}){80,}={0,2}"             # 裸 base64 长串
 )
 
 
