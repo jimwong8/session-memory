@@ -163,6 +163,16 @@ if problems:
         print(f"  - {p}")
     print(f"  key数={nkeys} nim维度={dim} 填充率="
           f"{f'{pct:.1f}%' if pct is not None else '未知'} 待办={pending}")
+    # 外发 Telegram 告警 —— 只写日志的告警等于没有告警（没人会去看日志）
+    try:
+        _body = "\n".join(f"- {p}" for p in problems)
+        _body += ("\n\nkey数=%s nim维度=%s 填充率=%s 待办=%s" % (
+            nkeys, dim, ("%.1f%%" % pct) if pct is not None else "未知", pending))
+        subprocess.run(["/home/jimwong/sm_notify.sh",
+                        "❌ Session Memory 健康检查异常（%d 项）" % len(problems), _body],
+                       timeout=40, check=False)
+    except Exception as _e:
+        print("  (告警发送失败: %s)" % type(_e).__name__)
     sys.exit(1)
 else:
     if os.getenv("WD_VERBOSE"):

@@ -17,6 +17,7 @@ echo "[$(date +%H:%M:%S)] 开始备份 ${DB_NAME} → ${OUT}"
 if ! docker exec "$PG_CONTAINER" pg_dump -U "$PG_USER" -d "$DB_NAME" -Fc -f /tmp/sm_backup.dump; then
     echo "[$(date +%H:%M:%S)] ❌ pg_dump 失败"
     docker exec "$PG_CONTAINER" rm -f /tmp/sm_backup.dump
+    /home/jimwong/sm_notify.sh "❌ Session Memory 备份失败（pg_dump）" "pg_dump 失败于 $(date '+%F %T')，本地无新备份" 2>/dev/null || true
     exit 1
 fi
 
@@ -56,6 +57,7 @@ if command -v scp >/dev/null 2>&1 && timeout 8 ssh -o BatchMode=yes -o ConnectTi
             "ls -t ${REMOTE_DIR}/sm_*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f" 2>/dev/null
     else
         echo "[$(date +%H:%M:%S)] ⚠️ 异地推送失败（本地备份仍有效）"
+        /home/jimwong/sm_notify.sh "⚠️ Session Memory 异地备份推送失败" "推送 ${REMOTE_HOST}:${REMOTE_DIR} 失败于 $(date '+%F %T')，本地备份仍有效" 2>/dev/null || true
     fi
 else
     echo "[$(date +%H:%M:%S)] ⚠️ 跳过异地推送（${REMOTE_HOST} 不可达）"
