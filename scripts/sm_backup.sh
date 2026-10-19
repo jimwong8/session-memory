@@ -42,6 +42,25 @@ fi
 # 7 份约 30G，安全）。扩容前是 3 天。
 find "$BACKUP_DIR" -name 'sm_*.dump' -mtime +7 -delete 2>/dev/null
 
+# --- 异地副本：推送到 PVE tw (10.100.1.254) 的 SAS12T/backup/sm-db ---
+# 13 号机是 QEMU VM，宿主（疑似 PVE253，当前不可达）故障会连坐；
+# 254 是独立物理机 + PBS 宿主，构成真正的异地副本。
+REMOTE_HOST="root@10.100.1.254"
+REMOTE_DIR="/SAS12T/backup/sm-db"
+if command -v scp >/dev/null 2>&1 && timeout 8 ssh -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE_HOST" true 2>/dev/null; then
+    echo "[$(date +%H:%M:%S)] 推送异地副本到 ${REMOTE_HOST}:${REMOTE_DIR}"
+    if scp -q -o ConnectTimeout=10 "$OUT" "${REMOTE_HOST}:${REMOTE_DIR}/" 2>>/tmp/sm_backup_remote.log; then
+        echo "[$(date +%H:%M:%S)] ✅ 异地推送成功"
+        # 远端保留 7 份（本地也是 7 天）
+        ssh -o BatchMode=yes -o ConnectTimeout=8 "$REMOTE_HOST" \
+            "ls -t ${REMOTE_DIR}/sm_*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f" 2>/dev/null
+    else
+        echo "[$(date +%H:%M:%S)] ⚠️ 异地推送失败（本地备份仍有效）"
+    fi
+else
+    echo "[$(date +%H:%M:%S)] ⚠️ 跳过异地推送（${REMOTE_HOST} 不可达）"
+fi
+
 # 磁盘水位保护：备份目录 > 45G 或磁盘使用率 >= 85% 时删最旧的
 TOTAL=$(du -sm "$BACKUP_DIR" | cut -f1)
 DISK_PCT=$(df -P "$BACKUP_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
