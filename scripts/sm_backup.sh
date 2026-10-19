@@ -38,14 +38,15 @@ else
     echo "[$(date +%H:%M:%S)] ⚠️ 备份已生成但校验失败 ${OUT} (${SIZE})"
 fi
 
-# 保留 3 天（单份 dump 约 3.4G，磁盘仅 28G 可用，保留 14 天会写满磁盘）
-find "$BACKUP_DIR" -name 'sm_*.dump' -mtime +3 -delete 2>/dev/null
+# 保留 7 天（单份 dump 约 4.2G；2026-10-19 扩容后根分区 98G -> 197G，可用 123G，
+# 7 份约 30G，安全）。扩容前是 3 天。
+find "$BACKUP_DIR" -name 'sm_*.dump' -mtime +7 -delete 2>/dev/null
 
-# 磁盘水位保护：备份目录 > 15G 或磁盘使用率 >= 80% 时删最旧的
+# 磁盘水位保护：备份目录 > 45G 或磁盘使用率 >= 85% 时删最旧的
 TOTAL=$(du -sm "$BACKUP_DIR" | cut -f1)
 DISK_PCT=$(df -P "$BACKUP_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
 echo "[$(date +%H:%M:%S)] 备份目录 ${TOTAL}MB, 磁盘使用 ${DISK_PCT}%"
-if [ "${TOTAL:-0}" -gt 15360 ] || [ "${DISK_PCT:-0}" -ge 80 ]; then
+if [ "${TOTAL:-0}" -gt 45000 ] || [ "${DISK_PCT:-0}" -ge 85 ]; then
     echo "[$(date +%H:%M:%S)] 触发水位保护（目录 ${TOTAL}MB / 磁盘 ${DISK_PCT}%），删除最旧备份"
     ls -t "$BACKUP_DIR"/sm_*.dump 2>/dev/null | tail -n +2 | xargs -r rm -f
 fi
